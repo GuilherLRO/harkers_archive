@@ -2,6 +2,8 @@
 
 Prompts used to generate the project artwork. Re-run in DALL·E, Midjourney, Flux, or similar to create variations.
 
+**Dr. Seward's Phonograph** (purple aura variant): [`../../sewards_phonograph/seward-phonograph/PROMPTS.md`](../../sewards_phonograph/seward-phonograph/PROMPTS.md).
+
 ## Files
 
 | File | Use |

@@ -11,9 +11,12 @@ from whisper.utils import format_timestamp
 
 # --- Configuration (edit before running) ---
 
-INPUT_DIR = Path("/path/to/your/audio/folder")
+_ARCHIVE_ROOT = Path(__file__).resolve().parents[1]
+INPUT_DIR = Path(
+    os.environ.get("HARKERS_INPUT_DIR", _ARCHIVE_ROOT / "voice_archive")
+)
 MODEL_NAME = "medium"
-SUPPORTED_EXTENSIONS = (".mp4", ".m4a", ".wav")
+SUPPORTED_EXTENSIONS = (".mp4", ".m4a", ".wav", ".ogg")
 
 logging.basicConfig(
     level=logging.INFO,

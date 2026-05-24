@@ -2,7 +2,7 @@
 
 ![Mina's Typewriter](assets/mina.png)
 
-Batch-transcribe audio and video files using [OpenAI Whisper](https://github.com/openai/whisper). Run from the **CLI** (`transcribe.py`) for same-folder output, or use the **Streamlit app** (`app.py`) to transcribe only missing files into a separate output folder.
+Part of [Harker's Archive](../README.md). Batch-transcribe audio and video files using [OpenAI Whisper](https://github.com/openai/whisper). Run from the **CLI** (`transcribe.py`) for same-folder output, or use the **Streamlit app** (`app.py`) to transcribe only missing files into a separate output folder.
 
 ## Prerequisites
 
@@ -34,11 +34,7 @@ ffmpeg -version
    uv sync
    ```
 
-3. Edit `transcribe.py` and set `INPUT_DIR` to the folder that contains your media:
-
-   ```python
-   INPUT_DIR = Path("/path/to/your/audio/folder")
-   ```
+3. From the monorepo root, `uv sync` installs dependencies. The CLI defaults to `../voice_archive` (override with `HARKERS_INPUT_DIR`).
 
 4. Run:
 
@@ -77,7 +73,7 @@ The app uses a dark theme styled to match the project artwork (`assets/mina.png`
 ## What the script does
 
 1. Loads a Whisper model once at startup (default: `medium`).
-2. Scans `INPUT_DIR` for files ending in `.m4a`, `.mp4`, or `.wav`.
+2. Scans `INPUT_DIR` for files ending in `.m4a`, `.mp4`, `.wav`, or `.ogg`.
 3. Transcribes each match and writes:
    - `<same-basename>.txt` — full transcript as plain UTF-8 text
    - `<same-basename>_segments.txt` — one line per segment with start/end timestamps
@@ -86,10 +82,10 @@ The app uses a dark theme styled to match the project artwork (`assets/mina.png`
 Supported extensions are defined at the top of `transcribe.py`:
 
 ```python
-SUPPORTED_EXTENSIONS = (".mp4", ".m4a", ".wav")
+SUPPORTED_EXTENSIONS = (".mp4", ".m4a", ".wav", ".ogg")
 ```
 
-Add more extensions there if needed (e.g. `.mp3`, `.webm`), as long as ffmpeg can read them.
+Add more extensions there if needed (e.g. `.mp3`, `.webm`), as long as ffmpeg can read them. Telegram voice notes from `sewards_phonograph` use `.ogg`.
 
 ## Whisper models
 
@@ -212,7 +208,7 @@ Edit constants at the top of the file:
 | Model | `MODEL_NAME` | `medium` |
 | Transcript output | `<basename>.txt` | Same directory as source |
 | Segment output | `<basename>_segments.txt` | Same directory as source |
-| File types | `SUPPORTED_EXTENSIONS` | `.mp4`, `.m4a`, `.wav` |
+| File types | `SUPPORTED_EXTENSIONS` | `.mp4`, `.m4a`, `.wav`, `.ogg` |
 
 Run with `uv run python transcribe.py`.
 
@@ -274,7 +270,7 @@ If your prompt shows `>>>`, you are inside the Python REPL, not the terminal she
 ### No files processed
 
 - Confirm `INPUT_DIR` points to the correct directory.
-- Confirm files use `.m4a`, `.mp4`, or `.wav` (or extend the suffix check).
+- Confirm files use `.m4a`, `.mp4`, `.wav`, or `.ogg` (or extend the suffix check).
 - Hidden or non-media files are skipped.
 
 ### Slow transcription

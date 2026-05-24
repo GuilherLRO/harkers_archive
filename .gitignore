@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+
+# Record base (local data)
+voice_archive/*
+!voice_archive/.gitkeep
+transcripts/*
+!transcripts/.gitkeep
+
+# Sub-project local env and venvs
+sewards_phonograph/.env
+sewards_phonograph/.venv/
+mina_typewriter/.venv/
