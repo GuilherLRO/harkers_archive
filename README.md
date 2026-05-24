@@ -1,7 +1,7 @@
 # Harker's Archive
 
 <p align="center">
-  <img src="assets/harkers-archive-logo.png" alt="Harker's Archive" width="320" />
+  <img src="assets/harkers-archive-logo-noframe.png" alt="Harker's Archive" width="560" />
 </p>
 
 *In Dracula, Seward dictated his diary into a phonograph; Mina typed the transcripts.*
