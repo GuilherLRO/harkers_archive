@@ -13,8 +13,8 @@ Root monorepo artwork. Parent mark to [Dr. Seward's Phonograph](../sewards_phono
 | File | Use |
 |------|-----|
 | `inspiration-reference.png` | User reference — mood and composition guide |
-| `harkers-archive-logo.png` | **Canonical logo** — README hero, repo identity (with frame) |
-| `harkers-archive-logo-noframe.png` | Logo variation — same subject, plain dark background, no canvas/frame |
+| `harkers-archive-logo.png` | **Canonical logo** — repo identity (with leather frame) |
+| `harkers-archive-logo-noframe.png` | **README hero** — same subject, plain dark background, no canvas/frame |
 | `harkers-archive-primary.png` | Primary square — full detail hero |
 | `harkers-archive-logo-v2.png` | Alternate logo crop |
 | `harkers-archive-banner.png` | Wide banner (16:9) |

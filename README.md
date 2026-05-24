@@ -1,17 +1,49 @@
 # Harker's Archive
 
-<p align="center">
-  <img src="assets/harkers-archive-logo-noframe.png" alt="Harker's Archive" width="560" />
-</p>
+![Harker's Archive](assets/harkers-archive-logo-noframe.png)
 
-*In Dracula, Seward dictated his diary into a phonograph; Mina typed the transcripts.*
+*The mark of the archive: a stack of aged pages and correspondence, with a sea-glass teal aura gathering letters from many directions into one record — Mina's manuscript, in emblem form.*
 
-**Harker's Archive** is a personal record base built from voice and text notes — the same flow, rebuilt for Telegram and Whisper. Capture on your phone, archive locally, transcribe when you are ready.
+## The compiled record
 
-| Module | Role | Docs |
-|--------|------|------|
-| [**Dr. Seward's Phonograph**](sewards_phonograph/) | Telegram bot — saves voice (`.ogg`) and typed text (`.txt`) | [README →](sewards_phonograph/README.md) |
-| [**Mina's Typewriter**](mina_typewriter/) | Whisper batch transcription — CLI + Streamlit | [README →](mina_typewriter/README.md) |
+Bram Stoker's *Dracula* is not a single diary. It is an **assembled chronicle** — journals, letters, telegrams, newspaper cuttings, and, in Dr. Seward's study at Purfleet, the wax cylinders of a phonograph. Jonathan Harker's Transylvania journal opens the account; Lucy Westenra, Abraham Van Helsing, and others add their witness. Dr. Seward **dictates** his asylum notes into the phonograph so that voice, too, may be preserved.
+
+Mina Murray — later Mina Harker — does not merely listen. She **types**, **orders**, and **compiles** the accounts of many hands into one readable chronology. Seward's cylinders are among her sources, not the only ones. What she produces is a working manuscript: scattered testimony made legible, page by page.
+
+**Harker's Archive** follows that same discipline for a personal record base. Speak or write from wherever you are; let the phonograph preserve the voice; let the typewriter fix it to the page. What accumulates in `transcripts/` is the working manuscript — incomplete, open, and meant to grow.
+
+In modern terms: capture via Telegram, archive locally, transcribe with Whisper when you are ready. The names and flow are metaphor, not historical claim — but the habit of gathering many voices into one record is the point.
+
+## Then and now
+
+| In the novel | In this repository |
+|--------------|-------------------|
+| Seward dictating into the phonograph | Voice messages → `voice_archive/*.ogg` via [sewards_phonograph](sewards_phonograph/) |
+| Mina typing phonograph cylinders | Whisper transcription → `transcripts/*.txt` via [mina_typewriter](mina_typewriter/) |
+| Letters, journals, telegrams | Typed Telegram notes → `transcripts/typed_notes_*.txt` |
+| Mina's assembled manuscript | The `transcripts/` folder — the compiled readable record |
+
+## The circle
+
+| Module | Lore | Role | Docs |
+|--------|------|------|------|
+| **Harker's Archive** | The compiled stack — many sources, one record (see [logo](assets/harkers-archive-logo-noframe.png)) | Monorepo root; shared `voice_archive/` and `transcripts/` | [Artwork →](assets/PROMPTS.md) |
+| [**Dr. Seward's Phonograph**](sewards_phonograph/) | Seward at the phonograph — voice preserved to cylinder | Telegram bot — saves voice (`.ogg`) and typed text (`.txt`) | [README →](sewards_phonograph/README.md) |
+| [**Mina's Typewriter**](mina_typewriter/) | Mina at the keys — whispers fixed to the page | Whisper batch transcription — CLI + Streamlit | [README →](mina_typewriter/README.md) |
+
+## Artwork
+
+![Harker's Archive — framed logo](assets/harkers-archive-logo.png)
+
+| Visual element | Meaning |
+|----------------|---------|
+| Stack of aged papers | Many witnesses compiled into one chronology |
+| Envelope and wax seal | Correspondence arriving from afar |
+| Sea-glass teal aura | Information gathering inward from many directions |
+| Floating letters in the mist | Voices and notes not yet fixed to the page |
+| Gold **HARKER'S ARCHIVE** on the top sheet | The named working manuscript |
+
+Logo files: [`harkers-archive-logo-noframe.png`](assets/harkers-archive-logo-noframe.png) (hero, above) and [`harkers-archive-logo.png`](assets/harkers-archive-logo.png) (framed). Prompts: [`assets/PROMPTS.md`](assets/PROMPTS.md).
 
 ## How it works
 
@@ -111,7 +143,9 @@ SAVE_DIR=/absolute/path/to/harkers_archive/voice_archive
 
 Both sub-projects load this file automatically. See [Configuration](#configuration) for all variables.
 
-### 4. Capture notes (phonograph)
+### 4. Capture notes (Seward's Phonograph)
+
+As in the novel, the phonograph runs first — preserving voice and text as they arrive:
 
 ```bash
 cd sewards_phonograph
@@ -127,9 +161,9 @@ The bot replies with the saved filename. Use `/start` or `/help` for a reminder.
 
 To run in the background: `nohup uv run python bot.py >> bot.log 2>&1 &` — see [sewards_phonograph/README.md](sewards_phonograph/README.md) for details.
 
-### 5. Transcribe voice (typewriter)
+### 5. Transcribe voice (Mina's Typewriter)
 
-Transcription is **manual** — run when you are ready:
+Transcription is **manual** — run when you are ready, as Mina would sit to the keys:
 
 ```bash
 cd mina_typewriter
@@ -164,10 +198,26 @@ Each module has its own README with artwork, troubleshooting, and reference docs
 
 - **[Dr. Seward's Phonograph](sewards_phonograph/README.md)** — commands, filename rules, background running, manual test plan
 - **[Mina's Typewriter](mina_typewriter/README.md)** — Whisper models, transcription options, Streamlit UI, CPU/GPU notes
+- **[Artwork & prompts](assets/PROMPTS.md)** — root logo (compiled stack, teal aura), framed and frameless variants, re-generation prompts
 
-## Adding modules
+## The work continues
 
-Add a new top-level folder with its own `pyproject.toml`, then register it under `[tool.uv.workspace] members` in the root `pyproject.toml`. Shared data stays in `voice_archive/` and `transcripts/`.
+This archive is deliberately incomplete — a working manuscript, not a closed book. Others are welcome to extend it.
+
+**Pull requests and issues are welcome.** Open a GitHub issue to propose a module name and scope before building, if you like. Follow the conventions in each module's README.
+
+### Roadmap (not yet built)
+
+| Direction | Idea |
+|-----------|------|
+| Index / search across transcripts | Find passages across the compiled record |
+| Automatic transcription on capture | Phonograph → typewriter without a manual step |
+| Summaries or cross-references | Collate related entries across days and sources |
+| Further witnesses | New capture or processing modules under the same record base |
+
+### Adding a module
+
+Add a new top-level folder with its own `pyproject.toml`, then register it under `[tool.uv.workspace] members` in the root [pyproject.toml](pyproject.toml). Shared data stays in `voice_archive/` and `transcripts/`.
 
 ## License
 
