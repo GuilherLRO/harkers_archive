@@ -14,7 +14,7 @@ ASSETS_DIR = Path(__file__).parent / "assets"
 HERO_IMAGE = ASSETS_DIR / "mina.png"
 
 st.set_page_config(
-    page_title="Mina Typewriter",
+    page_title="Mina's Typewriter",
     page_icon=str(HERO_IMAGE),
     layout="wide",
     initial_sidebar_state="collapsed",
@@ -89,7 +89,7 @@ def render_hero() -> None:
             st.image(str(HERO_IMAGE), use_container_width=True)
 
         with hero_right:
-            st.markdown("# Mina Typewriter")
+            st.markdown("# Mina's Typewriter")
             st.markdown(
                 '<p class="hero-tagline">Gathering whispers from the air...</p>',
                 unsafe_allow_html=True,

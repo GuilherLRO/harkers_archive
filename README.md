@@ -1,6 +1,6 @@
-# mina-typewriter
+# Mina's Typewriter
 
-![Mina Typewriter](assets/mina.png)
+![Mina's Typewriter](assets/mina.png)
 
 Batch-transcribe audio and video files using [OpenAI Whisper](https://github.com/openai/whisper). Run from the **CLI** (`transcribe.py`) for same-folder output, or use the **Streamlit app** (`app.py`) to transcribe only missing files into a separate output folder.
 
