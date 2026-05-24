@@ -27,23 +27,9 @@ In modern terms: capture via Telegram, archive locally, transcribe with Whisper 
 
 | Module | Lore | Role | Docs |
 |--------|------|------|------|
-| **Harker's Archive** | The compiled stack — many sources, one record (see [logo](assets/harkers-archive-logo-noframe.png)) | Monorepo root; shared `voice_archive/` and `transcripts/` | [Artwork →](assets/PROMPTS.md) |
+| **Harker's Archive** | The compiled stack — many sources, one record | Monorepo root; shared `voice_archive/` and `transcripts/` | — |
 | [**Dr. Seward's Phonograph**](sewards_phonograph/) | Seward at the phonograph — voice preserved to cylinder | Telegram bot — saves voice (`.ogg`) and typed text (`.txt`) | [README →](sewards_phonograph/README.md) |
 | [**Mina's Typewriter**](mina_typewriter/) | Mina at the keys — whispers fixed to the page | Whisper batch transcription — CLI + Streamlit | [README →](mina_typewriter/README.md) |
-
-## Artwork
-
-![Harker's Archive — framed logo](assets/harkers-archive-logo.png)
-
-| Visual element | Meaning |
-|----------------|---------|
-| Stack of aged papers | Many witnesses compiled into one chronology |
-| Envelope and wax seal | Correspondence arriving from afar |
-| Sea-glass teal aura | Information gathering inward from many directions |
-| Floating letters in the mist | Voices and notes not yet fixed to the page |
-| Gold **HARKER'S ARCHIVE** on the top sheet | The named working manuscript |
-
-Logo files: [`harkers-archive-logo-noframe.png`](assets/harkers-archive-logo-noframe.png) (hero, above) and [`harkers-archive-logo.png`](assets/harkers-archive-logo.png) (framed). Prompts: [`assets/PROMPTS.md`](assets/PROMPTS.md).
 
 ## How it works
 
@@ -198,7 +184,6 @@ Each module has its own README with artwork, troubleshooting, and reference docs
 
 - **[Dr. Seward's Phonograph](sewards_phonograph/README.md)** — commands, filename rules, background running, manual test plan
 - **[Mina's Typewriter](mina_typewriter/README.md)** — Whisper models, transcription options, Streamlit UI, CPU/GPU notes
-- **[Artwork & prompts](assets/PROMPTS.md)** — root logo (compiled stack, teal aura), framed and frameless variants, re-generation prompts
 
 ## The work continues
 
