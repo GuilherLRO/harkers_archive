@@ -1,6 +1,8 @@
 # mina-typewriter
 
-Batch-transcribe audio and video files in a folder using [OpenAI Whisper](https://github.com/openai/whisper). For each input file, the script writes a plain-text transcript and a timestamped segment file alongside it in the same directory.
+![Mina Typewriter](assets/mina.png)
+
+Batch-transcribe audio and video files using [OpenAI Whisper](https://github.com/openai/whisper). Run from the **CLI** (`transcribe.py`) for same-folder output, or use the **Streamlit app** (`app.py`) to transcribe only missing files into a separate output folder.
 
 ## Prerequisites
 
@@ -47,6 +49,30 @@ ffmpeg -version
    The first run downloads the Whisper model weights (size depends on the model; see below).
 
 5. Find outputs next to each source file, e.g. `recording.m4a` → `recording.txt` and `recording_segments.txt`.
+
+## Streamlit app
+
+For separate input and output folders, use the web UI. It scans for media files that do not yet have a matching `.txt` transcript in the output folder and transcribes only those.
+
+1. Install dependencies (includes Streamlit):
+
+   ```bash
+   uv sync
+   ```
+
+2. Run the app:
+
+   ```bash
+   uv run streamlit run app.py
+   ```
+
+3. Enter the **input folder** (media files) and **output folder** (transcripts).
+4. Click **Scan** to list pending files.
+5. Click **Transcribe pending** to process them. Each file produces `<basename>.txt` and `<basename>_segments.txt` in the output folder.
+
+The first run downloads the Whisper model weights. Transcription is slow on CPU; the model is loaded once per session and reused for all pending files.
+
+The app uses a dark theme styled to match the project artwork (`assets/mina.png`). Theme colors are configured in `.streamlit/config.toml`.
 
 ## What the script does
 
@@ -176,26 +202,45 @@ The return value is a dict. This project uses `result["text"]` for the `.txt` fi
 
 ## Configuration reference
 
-All behavior is controlled in `transcribe.py`:
+### CLI (`transcribe.py`)
+
+Edit constants at the top of the file:
 
 | Setting | Variable | Default |
 |---------|----------|---------|
 | Input folder | `INPUT_DIR` | Must be set by you |
 | Model | `MODEL_NAME` | `medium` |
-| Transcript output | `<basename>.txt` | Plain text, same directory as source |
-| Segment output | `<basename>_segments.txt` | Timestamped lines, same directory as source |
+| Transcript output | `<basename>.txt` | Same directory as source |
+| Segment output | `<basename>_segments.txt` | Same directory as source |
 | File types | `SUPPORTED_EXTENSIONS` | `.mp4`, `.m4a`, `.wav` |
 
-There is no CLI yet; change these constants at the top of `transcribe.py` and re-run.
+Run with `uv run python transcribe.py`.
+
+### Streamlit app (`app.py`)
+
+| Setting | Where | Default |
+|---------|-------|---------|
+| Input folder | Text input in the UI | — |
+| Output folder | Text input in the UI | — |
+| Model | Selectbox in the UI | `medium` (from `MODEL_NAME` in `transcribe.py`) |
+| Pending detection | Automatic on Scan | Missing `<basename>.txt` in output folder |
+
+Run with `uv run streamlit run app.py`.
 
 ## Project layout
 
 ```text
 mina_typewriter/
-├── pyproject.toml    # Dependencies (openai-whisper) and Python version
-├── uv.lock           # Locked dependency versions
-├── transcribe.py     # Main script
-└── README.md         # This file
+├── app.py                # Streamlit UI (input/output folders)
+├── assets/               # Artwork (mina.png) and AI prompt notes
+│   ├── mina.png          # Primary hero image
+│   └── PROMPTS.md        # Image generation prompts
+├── .streamlit/
+│   └── config.toml       # Streamlit theme (dark + gold)
+├── pyproject.toml        # Dependencies (openai-whisper, streamlit)
+├── uv.lock               # Locked dependency versions
+├── transcribe.py         # Core transcription logic and CLI script
+└── README.md             # This file
 ```
 
 ## Troubleshooting

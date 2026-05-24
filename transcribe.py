@@ -33,9 +33,15 @@ def save_segments_txt(result: dict, output_path: Path) -> None:
                 file.write(f"[{start} --> {end}] {text}\n")
 
 
-def transcribe_file(model: whisper.Whisper, input_dir: Path, filename: str) -> None:
+def transcribe_file(
+    model: whisper.Whisper,
+    input_dir: Path,
+    filename: str,
+    output_dir: Path | None = None,
+) -> None:
     """Transcribe one media file and write plain-text and segment outputs."""
     source_path = input_dir / filename
+    out = output_dir or input_dir
     logger.info("Transcribing file: %s", source_path)
 
     result = model.transcribe(
@@ -46,11 +52,11 @@ def transcribe_file(model: whisper.Whisper, input_dir: Path, filename: str) -> N
     )
 
     base = source_path.stem
-    transcript_path = input_dir / f"{base}.txt"
+    transcript_path = out / f"{base}.txt"
     transcript_path.write_text(result["text"], encoding="utf-8")
     logger.info("Transcription saved to: %s", transcript_path)
 
-    segments_path = input_dir / f"{base}_segments.txt"
+    segments_path = out / f"{base}_segments.txt"
     save_segments_txt(result, segments_path)
     logger.info("Timestamped segments saved to: %s", segments_path)
 
@@ -65,6 +71,15 @@ def iter_media_files(input_dir: Path) -> list[str]:
         for name in os.listdir(input_dir)
         if name.endswith(SUPPORTED_EXTENSIONS)
     )
+
+
+def missing_transcriptions(input_dir: Path, output_dir: Path) -> list[str]:
+    """Return media filenames in input_dir with no matching .txt in output_dir."""
+    return [
+        name
+        for name in iter_media_files(input_dir)
+        if not (output_dir / f"{Path(name).stem}.txt").is_file()
+    ]
 
 
 def main() -> None:
