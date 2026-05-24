@@ -10,7 +10,6 @@ voice_archive/*
 transcripts/*
 !transcripts/.gitkeep
 
-# Sub-project local env and venvs
-sewards_phonograph/.env
+# Sub-project local venvs
 sewards_phonograph/.venv/
 mina_typewriter/.venv/

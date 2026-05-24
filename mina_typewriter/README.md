@@ -2,7 +2,7 @@
 
 ![Mina's Typewriter](assets/mina.png)
 
-Part of [Harker's Archive](../README.md). Batch-transcribe audio and video files using [OpenAI Whisper](https://github.com/openai/whisper). Run from the **CLI** (`transcribe.py`) for same-folder output, or use the **Streamlit app** (`app.py`) to transcribe only missing files into a separate output folder.
+Part of [Harker's Archive](../README.md). Batch-transcribe audio and video files using [OpenAI Whisper](https://github.com/openai/whisper). Run from the **CLI** (`transcribe.py`) to read `voice_archive/` and write to `transcripts/`, or use the **Streamlit app** (`app.py`) to pick custom input/output folders.
 
 ## Prerequisites
 
@@ -26,34 +26,35 @@ ffmpeg -version
 
 ## Quick start
 
-1. Clone or open this repo.
-
-2. Install dependencies:
+1. From the [monorepo root](../README.md), install workspace dependencies:
 
    ```bash
-   uv sync
+   uv sync --all-packages
    ```
 
-3. From the monorepo root, `uv sync` installs dependencies. The CLI defaults to `../voice_archive` (override with `HARKERS_INPUT_DIR`).
-
-4. Run:
+2. Run the CLI (reads `voice_archive/`, writes to `transcripts/` by default):
 
    ```bash
+   cd mina_typewriter
    uv run python transcribe.py
    ```
 
+   Override with `HARKERS_INPUT_DIR` and `HARKERS_OUTPUT_DIR` in the root `.env` if needed.
+
    The first run downloads the Whisper model weights (size depends on the model; see below).
 
-5. Find outputs next to each source file, e.g. `recording.m4a` → `recording.txt` and `recording_segments.txt`.
+3. Find outputs in `transcripts/`, e.g. `20260524_151230_123456789.ogg` → `20260524_151230_123456789.txt` and `20260524_151230_123456789_segments.txt`.
+
+   Note: typed notes from [Seward's Phonograph](../sewards_phonograph/) (`typed_notes_*.txt`) are saved directly to `transcripts/` and are not processed by this tool.
 
 ## Streamlit app
 
 For separate input and output folders, use the web UI. It scans for media files that do not yet have a matching `.txt` transcript in the output folder and transcribes only those.
 
-1. Install dependencies (includes Streamlit):
+1. Install dependencies from the repo root:
 
    ```bash
-   uv sync
+   uv sync --all-packages
    ```
 
 2. Run the app:
@@ -204,10 +205,11 @@ Edit constants at the top of the file:
 
 | Setting | Variable | Default |
 |---------|----------|---------|
-| Input folder | `INPUT_DIR` | Must be set by you |
+| Input folder | `INPUT_DIR` | `voice_archive/` at repo root (via `HARKERS_INPUT_DIR`) |
+| Output folder | `OUTPUT_DIR` | `transcripts/` at repo root (via `HARKERS_OUTPUT_DIR`) |
 | Model | `MODEL_NAME` | `medium` |
-| Transcript output | `<basename>.txt` | Same directory as source |
-| Segment output | `<basename>_segments.txt` | Same directory as source |
+| Transcript output | `<basename>.txt` | `OUTPUT_DIR` |
+| Segment output | `<basename>_segments.txt` | `OUTPUT_DIR` |
 | File types | `SUPPORTED_EXTENSIONS` | `.mp4`, `.m4a`, `.wav`, `.ogg` |
 
 Run with `uv run python transcribe.py`.
@@ -234,10 +236,11 @@ mina_typewriter/
 ├── .streamlit/
 │   └── config.toml       # Streamlit theme (dark + gold)
 ├── pyproject.toml        # Dependencies (openai-whisper, streamlit)
-├── uv.lock               # Locked dependency versions
 ├── transcribe.py         # Core transcription logic and CLI script
 └── README.md             # This file
 ```
+
+Dependencies are locked at the monorepo root (`../uv.lock`). Run `uv sync --all-packages` from the repo root.
 
 ## Troubleshooting
 

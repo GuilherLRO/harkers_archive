@@ -1,6 +1,6 @@
 # Dr. Seward's Phonograph — AI image prompts
 
-Companion artwork to Mina's Typewriter. Dr. John Seward dictated his diary into a phonograph in *Dracula* — capturing audio and preserving it, the parallel to Mina typing transcripts. Uses a **purple / violet / indigo** palette.
+Companion artwork to [Harker's Archive](../../assets/PROMPTS.md) (teal) and [Mina's Typewriter](../../mina_typewriter/assets/PROMPTS.md) (gold). Dr. John Seward dictated his diary into a phonograph in *Dracula* — capturing audio and preserving it, the parallel to Mina typing transcripts. Uses a **purple / violet / indigo** palette.
 
 **Visual emphasis:** Seward is **recording** into the device (cranking, dictating, sound flowing *in* to the wax cylinder) — not listening to playback.
 

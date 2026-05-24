@@ -150,7 +150,14 @@ if scan_clicked or transcribe_clicked:
 
                 progress = st.progress(0, text="Transcribing...")
                 for index, filename in enumerate(pending, start=1):
-                    transcribe_file(model, input_dir, filename, output_dir)
+                    transcribe_file(
+                        model,
+                        input_dir,
+                        filename,
+                        output_dir,
+                        index=index,
+                        total=len(pending),
+                    )
                     progress.progress(
                         index / len(pending),
                         text=f"Transcribed {filename} ({index}/{len(pending)})",

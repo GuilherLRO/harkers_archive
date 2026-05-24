@@ -2,9 +2,12 @@
 
 ![Dr. Seward's Phonograph](seward-phonograph/seward-phonograph-primary.png)
 
-Part of [Harker's Archive](../README.md). Companion to [Mina's Typewriter](../mina_typewriter): a Telegram bot that **captures voice messages** and saves them to the shared record base. Each voice note becomes an `.ogg` file named with date, time, and the sender's Telegram user id.
+Part of [Harker's Archive](../README.md). Companion to [Mina's Typewriter](../mina_typewriter): a Telegram bot that **captures voice messages and plain text** and saves them to the shared record base.
 
-In *Dracula*, Seward dictated his diary into a phonograph; Mina typed the transcripts. This project pair mirrors that flow: **record here → transcribe there**.
+- **Voice messages** → `voice_archive/` as `.ogg` files (one file per message)
+- **Plain text** → `transcripts/` as daily `.txt` files (one file per user per day; each message appended with a timestamp)
+
+In *Dracula*, Seward dictated his diary into a phonograph; Mina typed the transcripts. This project pair mirrors that flow: **record here → transcribe voice there**.
 
 ## Prerequisites
 
@@ -19,29 +22,25 @@ In *Dracula*, Seward dictated his diary into a phonograph; Mina typed the transc
 1. From the [monorepo root](../README.md), install workspace dependencies:
 
    ```bash
-   uv sync
+   uv sync --all-packages
    ```
 
-2. Configure environment (use an **absolute** path for `SAVE_DIR`):
+2. Configure environment at the **monorepo root** (use an **absolute** path for `SAVE_DIR`):
 
    ```bash
-   cd sewards_phonograph
-   cp .env.example .env
-   # Edit TELEGRAM_BOT_TOKEN and SAVE_DIR
+   cp .env.example .env   # from repo root
+   # Edit TELEGRAM_BOT_TOKEN, SAVE_DIR, and optionally TRANSCRIPTS_DIR
    ```
 
-   Example `SAVE_DIR` (shared archive at repo root):
+   Example paths (shared archive at repo root):
 
    ```bash
    SAVE_DIR=/absolute/path/to/harkers_archive/voice_archive
+   # Optional; defaults to sibling transcripts/ next to SAVE_DIR
+   # TRANSCRIPTS_DIR=/absolute/path/to/harkers_archive/transcripts
    ```
 
-   Or export in your shell:
-
-   ```bash
-   export TELEGRAM_BOT_TOKEN="your-token-from-botfather"
-   export SAVE_DIR="/absolute/path/to/harkers_archive/voice_archive"
-   ```
+   The bot loads `harkers_archive/.env` automatically when it starts.
 
 3. Run the bot:
 
@@ -49,11 +48,15 @@ In *Dracula*, Seward dictated his diary into a phonograph; Mina typed the transc
    uv run python bot.py
    ```
 
-   You should see `Bot started` in the logs. The process must stay running while you use Telegram.
+   You should see `Bot started. Voice → …, typed notes → …` in the logs. The process must stay running while you use Telegram.
 
-4. In Telegram, open **your** bot (username from BotFather) and send a **voice message** (hold the mic, record, release). The bot replies with the saved filename.
+4. In Telegram, open **your** bot (username from BotFather) and send either:
+   - a **voice message** (hold the mic, record, release) — saved to `voice_archive/`
+   - **plain text** — appended to `transcripts/typed_notes_YYYYMMDD_<your_id>.txt`
 
-5. Transcribe with [Mina's Typewriter](../mina_typewriter) when you are ready (transcription is **not** automatic):
+   The bot replies with the saved filename.
+
+5. Transcribe voice with [Mina's Typewriter](../mina_typewriter) when you are ready (transcription is **not** automatic):
 
    ```bash
    cd ../mina_typewriter
@@ -64,13 +67,16 @@ In *Dracula*, Seward dictated his diary into a phonograph; Mina typed the transc
 
 ## What the bot does
 
-1. Loads `TELEGRAM_BOT_TOKEN` and `SAVE_DIR` from the environment (`.env` via `python-dotenv`, or exported variables).
+1. Loads `TELEGRAM_BOT_TOKEN`, `SAVE_DIR`, and optionally `TRANSCRIPTS_DIR` from the repo root `.env` (via `python-dotenv` in `config.py`, or exported shell variables). If `TRANSCRIPTS_DIR` is unset, it defaults to `transcripts/` as a sibling of `SAVE_DIR`.
 2. Long-polls the Telegram Bot API for updates.
 3. On a **voice message**, downloads the Opus audio and writes `{YYYYMMDD}_{HHMMSS}_{user_id}.ogg` under `SAVE_DIR` (creates the folder if needed).
-4. Replies in chat with the saved filename.
-5. Ignores text, photos, audio files, and video notes. Responds to `/start` and `/help` with usage instructions.
+4. On **plain text**, appends a timestamped entry to `typed_notes_{YYYYMMDD}_{user_id}.txt` under `TRANSCRIPTS_DIR` (creates the folder if needed).
+5. Replies in chat with the saved filename.
+6. Ignores photos, audio files, video notes, and commands other than `/start` and `/help`. Responds to `/start` and `/help` with usage instructions.
 
-## Filename format
+## Filename formats
+
+### Voice messages
 
 Voice files use local time (24-hour) and the sender's numeric Telegram user id:
 
@@ -89,6 +95,24 @@ Example: `20260524_151230_123456789.ogg`
 
 If two voice notes from the same user arrive in the same second, the bot appends `_2`, `_3`, … before `.ogg` to avoid overwriting.
 
+### Typed text notes
+
+Plain text messages are appended to one file per user per calendar day:
+
+```text
+typed_notes_{YYYYMMDD}_{telegram_user_id}.txt
+```
+
+Each entry is prefixed with a wall-clock timestamp in brackets, followed by the message body and a blank line:
+
+```text
+[20260524_151230] Remember to call the lab tomorrow.
+
+[20260524_183045] Follow up on the blood work results.
+```
+
+Example file: `typed_notes_20260524_123456789.txt`
+
 ## Commands
 
 | Command | Description |
@@ -96,28 +120,32 @@ If two voice notes from the same user arrive in the same second, the bot appends
 | `/start` | Welcome message and usage |
 | `/help` | Same as `/start` |
 
-Only **voice messages** are saved.
+**Voice messages** and **plain text** are saved. Photos, audio files, and video notes are ignored.
 
 ## Pipeline with Mina's Typewriter
 
 ```text
 Telegram voice → sewards_phonograph → voice_archive/*.ogg
-                                      → mina_typewriter → transcripts/*.txt
+                                      → mina_typewriter → transcripts/<basename>.txt
+
+Telegram text  → sewards_phonograph → transcripts/typed_notes_YYYYMMDD_<user_id>.txt
 ```
 
 | Step | Tool | Automatic? |
 |------|------|--------------|
-| Capture | This bot | Yes, while `bot.py` is running |
-| Transcribe | `mina_typewriter` | No — run CLI or Streamlit manually |
+| Capture voice | This bot | Yes, while `bot.py` is running |
+| Capture text | This bot | Yes, while `bot.py` is running |
+| Transcribe voice | `mina_typewriter` | No — run CLI or Streamlit manually |
 
-Point `SAVE_DIR` at the same folder `mina_typewriter` reads (`../voice_archive` by default). See the [root README](../README.md).
+Point `SAVE_DIR` at the same folder `mina_typewriter` reads (`voice_archive/` by default). Typed notes go directly to `transcripts/` and do not need Whisper. See the [root README](../README.md).
 
 ## Configuration reference
 
 | Setting | Variable | Where |
 |---------|----------|--------|
-| Bot token | `TELEGRAM_BOT_TOKEN` | `.env` or shell |
+| Bot token | `TELEGRAM_BOT_TOKEN` | Root `.env` or shell |
 | Voice archive | `SAVE_DIR` | Absolute path; e.g. `harkers_archive/voice_archive` |
+| Typed notes | `TRANSCRIPTS_DIR` | Optional absolute path; defaults to sibling `transcripts/` next to `SAVE_DIR` |
 
 Run with `uv run python bot.py` from this directory (or `uv run --directory sewards_phonograph python bot.py` from the repo root).
 
@@ -126,11 +154,10 @@ Run with `uv run python bot.py` from this directory (or `uv run --directory sewa
 ```text
 sewards_phonograph/
 ├── bot.py                    # Telegram handlers and long polling
-├── save_voice.py             # Download and filename logic
-├── config.py                 # TELEGRAM_BOT_TOKEN, SAVE_DIR from env
+├── save_voice.py             # Download and filename logic for voice messages
+├── save_text_note.py         # Append typed text to daily note files
+├── config.py                 # TELEGRAM_BOT_TOKEN, SAVE_DIR, TRANSCRIPTS_DIR from root .env
 ├── pyproject.toml
-├── uv.lock
-├── .env.example
 ├── README.md                 # This file
 └── seward-phonograph/        # Artwork and AI prompt notes
     ├── seward-phonograph-primary.png   # README hero
@@ -140,6 +167,8 @@ sewards_phonograph/
     ├── seward-phonograph-study.png
     └── PROMPTS.md            # Image generation prompts
 ```
+
+Dependencies are locked at the monorepo root (`../uv.lock`). Run `uv sync --all-packages` from the repo root.
 
 ## Artwork
 
@@ -175,20 +204,21 @@ Stop with `kill` on the process id. For a persistent setup, use launchd (macOS) 
 
 ## Manual test plan
 
-1. Create a bot via [@BotFather](https://t.me/BotFather); set `TELEGRAM_BOT_TOKEN` and `SAVE_DIR` in `.env`.
-2. Run `uv run python bot.py` — the process should stay up and log "Bot started".
+1. Create a bot via [@BotFather](https://t.me/BotFather); set `TELEGRAM_BOT_TOKEN` and `SAVE_DIR` in the root `.env`.
+2. Run `uv run python bot.py` — the process should stay up and log `Bot started. Voice → …, typed notes → …`.
 3. Send `/start` — bot should reply with instructions.
 4. Send a voice note from your account — a file `YYYYMMDD_HHMMSS_<your_id>.ogg` should appear in `SAVE_DIR`; bot confirms the filename.
-5. If you have a second Telegram account, send a voice note — filename should contain that account's user id.
-6. Send plain text or a photo — bot should not save anything (no reply unless you use `/start`).
-7. Stop the bot; open the `.ogg` in QuickTime or VLC, or verify with `ffmpeg -i <file>`.
-8. Run `mina_typewriter` on `SAVE_DIR` and confirm a `.txt` transcript is produced.
+5. Send plain text — an entry should appear in `transcripts/typed_notes_YYYYMMDD_<your_id>.txt`; bot confirms the filename.
+6. If you have a second Telegram account, send a voice note or text — filenames should contain that account's user id.
+7. Send a photo — bot should not save anything (no reply unless you use `/start`).
+8. Stop the bot; open the `.ogg` in QuickTime or VLC, or verify with `ffmpeg -i <file>`.
+9. Run `mina_typewriter` on `SAVE_DIR` and confirm a `.txt` transcript is produced for the voice file.
 
 ## Troubleshooting
 
 ### `ConfigurationError: TELEGRAM_BOT_TOKEN is not set`
 
-Set `TELEGRAM_BOT_TOKEN` in `.env` or export it before starting the bot (see `.env.example`).
+Set `TELEGRAM_BOT_TOKEN` in the repo root `.env` or export it before starting the bot (see `.env.example` at the repo root).
 
 ### `ConfigurationError: SAVE_DIR is not set`
 
@@ -204,9 +234,9 @@ Set `SAVE_DIR` to an **absolute** path. The directory is created automatically i
 
 Regenerate the token in BotFather if needed and update `TELEGRAM_BOT_TOKEN`.
 
-### Cannot write to `SAVE_DIR`
+### Cannot write to `SAVE_DIR` or `TRANSCRIPTS_DIR`
 
-Use a path your user can create and write to (e.g. `harkers_archive/voice_archive` under your home directory).
+Use paths your user can create and write to (e.g. `harkers_archive/voice_archive` and `harkers_archive/transcripts` under your home directory).
 
 ### `ModuleNotFoundError` or wrong Telegram package
 
