@@ -31,7 +31,7 @@ In modern terms: capture via Telegram, archive locally, transcribe with Whisper 
 | [**Dr. Seward's Phonograph**](sewards_phonograph/) | Seward at the phonograph — voice preserved to cylinder | Telegram bot — saves voice (`.ogg`) and typed text (`.txt`) | [README →](sewards_phonograph/README.md) |
 | [**Mina's Typewriter**](mina_typewriter/) | Mina at the keys — whispers fixed to the page | Whisper batch transcription — CLI + Streamlit | [README →](mina_typewriter/README.md) |
 
-**Root coordinator:** [`helsings_round.py`](helsings_round.py) — optional; runs the phonograph and schedules the typewriter without changing either sub-project.
+**Root coordinator:** [`helsings_round.py`](helsings_round.py) + [`helsings_roundctl.sh`](helsings_roundctl.sh) — optional; runs the phonograph and schedules the typewriter without changing either sub-project.
 
 ## How it works
 
@@ -79,6 +79,7 @@ harkers_archive/
 ├── sewards_phonograph/  # Telegram capture bot
 ├── mina_typewriter/     # Whisper transcription
 ├── helsings_round.py       # optional: bot + scheduled transcribe coordinator
+├── helsings_roundctl.sh    # start / stop / restart / status / logs for the coordinator
 ├── .env                 # shared config (gitignored; copy from .env.example)
 └── uv.lock              # shared workspace lockfile
 ```
@@ -178,10 +179,20 @@ Each voice file produces `<basename>.txt` and `<basename>_segments.txt`. The fir
 To keep the phonograph running and transcribe on a schedule (default every 10 minutes), from the **repo root**:
 
 ```bash
+./helsings_roundctl.sh start    # background + log file
+./helsings_roundctl.sh status
+./helsings_roundctl.sh restart
+./helsings_roundctl.sh stop
+./helsings_roundctl.sh logs     # tail -f helsings_round.log
+```
+
+Foreground (same terminal):
+
+```bash
 uv run python helsings_round.py
 ```
 
-Set `TRANSCRIBE_INTERVAL_MINUTES` in the root `.env` to change how often Mina's Typewriter runs. Users who recently sent voice notes receive a Telegram summary after each pass. This script only calls the existing sub-projects via subprocess — it does not replace manual steps 4 and 5.
+Set `TRANSCRIBE_INTERVAL_MINUTES` in the root `.env` to change how often Mina's Typewriter runs. Users who recently sent voice notes receive a Telegram summary after each pass. This script only calls the existing sub-projects via subprocess — it does not replace manual steps 4 and 5. Only one instance should run at a time.
 
 ## Configuration
 

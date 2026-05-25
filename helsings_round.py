@@ -9,16 +9,17 @@ Run from the repo root (where .env lives):
 
 Run in the background (survives closing the terminal; logs to helsings_round.log):
 
+    ./helsings_roundctl.sh start
+
+Or manually:
+
     nohup uv run python helsings_round.py >> helsings_round.log 2>&1 &
 
-The shell prints a job number and PID, e.g. ``[1] 12345``. To stop:
+Stop / restart / status:
 
-    kill 12345
-
-Or find the PID later:
-
-    pgrep -f "python helsings_round.py"
-    kill $(pgrep -f "python helsings_round.py")
+    ./helsings_roundctl.sh stop
+    ./helsings_roundctl.sh restart
+    ./helsings_roundctl.sh status
 
 SIGTERM/SIGINT shut down the bot subprocess cleanly. Use ``kill -9`` only if a normal
 ``kill`` does not exit within a few seconds.
