@@ -2,6 +2,29 @@
 """Run Seward's Phonograph and schedule Mina's Typewriter — root coordinator.
 
 Does not modify sub-projects: starts bot.py and transcribe.py via subprocess.
+
+Run from the repo root (where .env lives):
+
+    uv run python helsings_round.py
+
+Run in the background (survives closing the terminal; logs to helsings_round.log):
+
+    nohup uv run python helsings_round.py >> helsings_round.log 2>&1 &
+
+The shell prints a job number and PID, e.g. ``[1] 12345``. To stop:
+
+    kill 12345
+
+Or find the PID later:
+
+    pgrep -f "python helsings_round.py"
+    kill $(pgrep -f "python helsings_round.py")
+
+SIGTERM/SIGINT shut down the bot subprocess cleanly. Use ``kill -9`` only if a normal
+``kill`` does not exit within a few seconds.
+
+Do not run ``bot.py`` separately while this script is active — both would use the
+same Telegram token.
 """
 
 from __future__ import annotations
