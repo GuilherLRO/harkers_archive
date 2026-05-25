@@ -31,6 +31,8 @@ In modern terms: capture via Telegram, archive locally, transcribe with Whisper 
 | [**Dr. Seward's Phonograph**](sewards_phonograph/) | Seward at the phonograph — voice preserved to cylinder | Telegram bot — saves voice (`.ogg`) and typed text (`.txt`) | [README →](sewards_phonograph/README.md) |
 | [**Mina's Typewriter**](mina_typewriter/) | Mina at the keys — whispers fixed to the page | Whisper batch transcription — CLI + Streamlit | [README →](mina_typewriter/README.md) |
 
+**Root coordinator:** [`helsings_round.py`](helsings_round.py) — optional; runs the phonograph and schedules the typewriter without changing either sub-project.
+
 ## How it works
 
 ```mermaid
@@ -46,14 +48,17 @@ flowchart LR
     TR[(transcripts/*.txt)]
   end
 
-  subgraph transcribe["Transcribe (manual)"]
+  subgraph transcribe["Transcribe (manual or scheduled)"]
     MT[Mina's Typewriter]
+    AR[helsings_round.py]
   end
 
   SP -->|voice message| VA
   SP -->|plain text| TR
   VA --> MT
   MT -->|Whisper output| TR
+  AR -.->|optional: bot + interval| SP
+  AR -.->|optional: interval| MT
 ```
 
 | Step | Tool | When |
@@ -61,8 +66,9 @@ flowchart LR
 | Capture voice | Seward's Phonograph | Automatic while the bot runs |
 | Capture text | Seward's Phonograph | Automatic while the bot runs |
 | Transcribe voice | Mina's Typewriter | Manual — run CLI or Streamlit when ready |
+| Run everything | `helsings_round.py` | Bot always on + transcribe every N minutes (see `TRANSCRIBE_INTERVAL_MINUTES`) |
 
-Typed notes land in `transcripts/` immediately. Voice files wait in `voice_archive/` until you run Mina's Typewriter.
+Typed notes land in `transcripts/` immediately. Voice files wait in `voice_archive/` until you run Mina's Typewriter (or `helsings_round.py` on its schedule).
 
 ## Record base layout
 
@@ -72,6 +78,7 @@ harkers_archive/
 ├── transcripts/         # typed notes + Whisper .txt output — gitignored
 ├── sewards_phonograph/  # Telegram capture bot
 ├── mina_typewriter/     # Whisper transcription
+├── helsings_round.py       # optional: bot + scheduled transcribe coordinator
 ├── .env                 # shared config (gitignored; copy from .env.example)
 └── uv.lock              # shared workspace lockfile
 ```
@@ -166,6 +173,16 @@ uv run streamlit run app.py
 
 Each voice file produces `<basename>.txt` and `<basename>_segments.txt`. The first run downloads Whisper model weights — see [mina_typewriter/README.md](mina_typewriter/README.md) for model choices and tuning.
 
+### 6. Run everything (`helsings_round.py`)
+
+To keep the phonograph running and transcribe on a schedule (default every 10 minutes), from the **repo root**:
+
+```bash
+uv run python helsings_round.py
+```
+
+Set `TRANSCRIBE_INTERVAL_MINUTES` in the root `.env` to change how often Mina's Typewriter runs. Users who recently sent voice notes receive a Telegram summary after each pass. This script only calls the existing sub-projects via subprocess — it does not replace manual steps 4 and 5.
+
 ## Configuration
 
 All settings live in the root `.env`. Sub-projects resolve it automatically.
@@ -177,6 +194,7 @@ All settings live in the root `.env`. Sub-projects resolve it automatically.
 | `TRANSCRIPTS_DIR` | Phonograph | No | Absolute path for typed notes; defaults to sibling `transcripts/` next to `SAVE_DIR` |
 | `HARKERS_INPUT_DIR` | Typewriter | No | Override input folder; defaults to `voice_archive/` |
 | `HARKERS_OUTPUT_DIR` | Typewriter | No | Override output folder; defaults to `transcripts/` |
+| `TRANSCRIBE_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between scheduled transcription passes (default `10`) |
 
 ## Going deeper
 
@@ -196,7 +214,7 @@ This archive is deliberately incomplete — a working manuscript, not a closed b
 | Direction | Idea |
 |-----------|------|
 | Index / search across transcripts | Find passages across the compiled record |
-| Automatic transcription on capture | Phonograph → typewriter without a manual step |
+| Automatic transcription on capture | Phonograph → typewriter without a manual step | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
 | Summaries or cross-references | Collate related entries across days and sources |
 | Further witnesses | New capture or processing modules under the same record base |
 
