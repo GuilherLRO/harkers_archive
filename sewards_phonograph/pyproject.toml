@@ -3,6 +3,7 @@ name = "seward-phonograph"
 version = "0.1.0"
 description = "Telegram bot that archives voice messages to disk"
 readme = "README.md"
+license = "MIT"
 requires-python = ">=3.13"
 dependencies = [
     "python-telegram-bot>=21.0",

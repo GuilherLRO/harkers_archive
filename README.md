@@ -235,4 +235,4 @@ Add a new top-level folder with its own `pyproject.toml`, then register it under
 
 ## License
 
-Add a license here if you publish or share this repo.
+This project is licensed under the [MIT License](LICENSE).
