@@ -3,7 +3,15 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+from archive_logging import configure_logging
+
+configure_logging(_REPO_ROOT)
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes, MessageHandler, filters
@@ -13,10 +21,6 @@ from save_text_note import append_text_note
 from save_voice import save_voice_message
 
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 HELP_TEXT = (

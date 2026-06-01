@@ -5,6 +5,7 @@ __pycache__/
 .env
 .helsings_round.pid
 helsings_round.log
+helsings_round_http.log
 
 # Record base (local data)
 voice_archive/*

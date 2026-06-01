@@ -2,7 +2,7 @@
 # Start, stop, restart, and inspect helsings_round.py (Seward + scheduled Mina).
 #
 # Usage (from anywhere):
-#   ./helsings_roundctl.sh start|stop|restart|status|logs
+#   ./helsings_roundctl.sh start|stop|restart|status|logs|logs-http
 #
 # Run from the repo root where .env lives.
 
@@ -11,6 +11,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PIDFILE="${REPO_ROOT}/.helsings_round.pid"
 LOG="${REPO_ROOT}/helsings_round.log"
+HTTP_LOG="${REPO_ROOT}/helsings_round_http.log"
 MAIN_PATTERN="${REPO_ROOT}/.venv/bin/python3 helsings_round.py"
 
 usage() {
@@ -18,11 +19,12 @@ usage() {
 Usage: $(basename "$0") <command>
 
 Commands:
-  start    Run helsings_round in the background (append to helsings_round.log)
-  stop     Stop the coordinator (SIGTERM, then SIGKILL if needed)
-  restart  stop, then start
-  status   Show whether the archive runner is running
-  logs     Tail helsings_round.log (Ctrl+C to exit)
+  start      Run helsings_round in the background (append to helsings_round.log)
+  stop       Stop the coordinator (SIGTERM, then SIGKILL if needed)
+  restart    stop, then start
+  status     Show whether the archive runner is running
+  logs       Tail helsings_round.log (Ctrl+C to exit)
+  logs-http  Tail helsings_round_http.log — Telegram HTTP traffic (Ctrl+C to exit)
 
 Only one instance should run at a time (same Telegram bot token).
 EOF
@@ -127,7 +129,7 @@ cmd_start() {
     rm -f "$PIDFILE"
     return 1
   fi
-  echo "started (PID $(read_pidfile), log: ${LOG})"
+  echo "started (PID $(read_pidfile), log: ${LOG}, http: ${HTTP_LOG})"
 }
 
 cmd_restart() {
@@ -140,6 +142,11 @@ cmd_logs() {
   tail -f "$LOG"
 }
 
+cmd_logs_http() {
+  touch "$HTTP_LOG"
+  tail -f "$HTTP_LOG"
+}
+
 main() {
   local cmd="${1:-}"
   case "$cmd" in
@@ -148,6 +155,7 @@ main() {
     restart) cmd_restart ;;
     status) cmd_status ;;
     logs) cmd_logs ;;
+    logs-http) cmd_logs_http ;;
     -h|--help|help|"") usage ;;
     *)
       echo "Unknown command: ${cmd}" >&2

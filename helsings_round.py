@@ -7,9 +7,12 @@ Run from the repo root (where .env lives):
 
     uv run python helsings_round.py
 
-Run in the background (survives closing the terminal; logs to helsings_round.log):
+Run in the background (survives closing the terminal):
 
     ./helsings_roundctl.sh start
+
+    helsings_round.log       — coordinator and bot activity
+    helsings_round_http.log  — Telegram HTTP polling (httpx)
 
 Or manually:
 
@@ -38,20 +41,18 @@ import subprocess
 import time
 from pathlib import Path
 
+from archive_logging import configure_logging
 from dotenv import load_dotenv
 from telegram import Bot
 
 REPO_ROOT = Path(__file__).resolve().parent
+configure_logging(REPO_ROOT)
 SEWARD_DIR = REPO_ROOT / "sewards_phonograph"
 MINA_DIR = REPO_ROOT / "mina_typewriter"
 VOICE_EXTENSIONS = (".ogg", ".m4a", ".mp4", ".wav")
 
 DEFAULT_INTERVAL_MINUTES = 480
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
 logger = logging.getLogger(__name__)
 
 _bot_proc: subprocess.Popen[bytes] | None = None

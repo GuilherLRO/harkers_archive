@@ -79,7 +79,8 @@ harkers_archive/
 ├── sewards_phonograph/  # Telegram capture bot
 ├── mina_typewriter/     # Whisper transcription
 ├── helsings_round.py       # optional: bot + scheduled transcribe coordinator
-├── helsings_roundctl.sh    # start / stop / restart / status / logs for the coordinator
+├── helsings_roundctl.sh    # start / stop / restart / status / logs / logs-http
+├── archive_logging.py      # splits Telegram HTTP traffic into a separate log file
 ├── .env                 # shared config (gitignored; copy from .env.example)
 └── uv.lock              # shared workspace lockfile
 ```
@@ -183,7 +184,8 @@ To keep the phonograph running and transcribe on a schedule (default every 8 hou
 ./helsings_roundctl.sh status
 ./helsings_roundctl.sh restart
 ./helsings_roundctl.sh stop
-./helsings_roundctl.sh logs     # tail -f helsings_round.log
+./helsings_roundctl.sh logs       # tail -f helsings_round.log
+./helsings_roundctl.sh logs-http  # tail -f helsings_round_http.log (Telegram polling)
 ```
 
 Foreground (same terminal):
@@ -193,6 +195,8 @@ uv run python helsings_round.py
 ```
 
 Set `TRANSCRIBE_INTERVAL_MINUTES` in the root `.env` to change how often Mina's Typewriter runs. Users who recently sent voice notes receive a Telegram summary after each pass. This script only calls the existing sub-projects via subprocess — it does not replace manual steps 4 and 5. Only one instance should run at a time.
+
+Background runs write two log files at the repo root (both gitignored): `helsings_round.log` for coordinator and bot activity, and `helsings_round_http.log` for frequent Telegram HTTP polling (`httpx`). Use `logs` and `logs-http` with the ctl script to tail each file.
 
 ## Configuration
 
@@ -206,6 +210,7 @@ All settings live in the root `.env`. Sub-projects resolve it automatically.
 | `HARKERS_INPUT_DIR` | Typewriter | No | Override input folder; defaults to `voice_archive/` |
 | `HARKERS_OUTPUT_DIR` | Typewriter | No | Override output folder; defaults to `transcripts/` |
 | `TRANSCRIBE_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between scheduled transcription passes (default `480`) |
+| `HELSINGS_HTTP_LOG` | `archive_logging.py` | No | Absolute path for Telegram HTTP log; defaults to `helsings_round_http.log` in the repo root |
 
 ## Going deeper
 
