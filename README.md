@@ -176,7 +176,7 @@ Each voice file produces `<basename>.txt` and `<basename>_segments.txt`. The fir
 
 ### 6. Run everything (`helsings_round.py`)
 
-To keep the phonograph running and transcribe on a schedule (default every 10 minutes), from the **repo root**:
+To keep the phonograph running and transcribe on a schedule (default every 8 hours), from the **repo root**:
 
 ```bash
 ./helsings_roundctl.sh start    # background + log file
@@ -205,7 +205,7 @@ All settings live in the root `.env`. Sub-projects resolve it automatically.
 | `TRANSCRIPTS_DIR` | Phonograph | No | Absolute path for typed notes; defaults to sibling `transcripts/` next to `SAVE_DIR` |
 | `HARKERS_INPUT_DIR` | Typewriter | No | Override input folder; defaults to `voice_archive/` |
 | `HARKERS_OUTPUT_DIR` | Typewriter | No | Override output folder; defaults to `transcripts/` |
-| `TRANSCRIBE_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between scheduled transcription passes (default `10`) |
+| `TRANSCRIBE_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between scheduled transcription passes (default `480`) |
 
 ## Going deeper
 

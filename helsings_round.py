@@ -46,7 +46,7 @@ SEWARD_DIR = REPO_ROOT / "sewards_phonograph"
 MINA_DIR = REPO_ROOT / "mina_typewriter"
 VOICE_EXTENSIONS = (".ogg", ".m4a", ".mp4", ".wav")
 
-DEFAULT_INTERVAL_MINUTES = 10
+DEFAULT_INTERVAL_MINUTES = 480
 
 logging.basicConfig(
     level=logging.INFO,
