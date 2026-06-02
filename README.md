@@ -194,7 +194,7 @@ Foreground (same terminal):
 uv run python helsings_round.py
 ```
 
-Set `TRANSCRIBE_INTERVAL_MINUTES` in the root `.env` to change how often Mina's Typewriter runs. Users who recently sent voice notes receive a Telegram summary after each pass. This script only calls the existing sub-projects via subprocess — it does not replace manual steps 4 and 5. Only one instance should run at a time.
+Set `TRANSCRIBE_INTERVAL_MINUTES` in the root `.env` to change how often Mina's Typewriter runs. Users who recently sent voice notes receive a Telegram summary after each pass. If that summary cannot be sent (network or Telegram API error), the same users get a short failure notice instead; the runner keeps going and does not stop the capture bot. This script only calls the existing sub-projects via subprocess — it does not replace manual steps 4 and 5. Only one instance should run at a time.
 
 Background runs write two log files at the repo root (both gitignored): `helsings_round.log` for coordinator and bot activity, and `helsings_round_http.log` for frequent Telegram HTTP polling (`httpx`). Use `logs` and `logs-http` with the ctl script to tail each file.
 

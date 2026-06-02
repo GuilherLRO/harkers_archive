@@ -169,6 +169,14 @@ def format_notify_message(
     return f"Mina's Typewriter — scheduled pass complete. Transcribed {len(done)} file(s): {file_list}."
 
 
+def format_failure_message(error: BaseException) -> str:
+    return (
+        "Mina's Typewriter — could not send the pass summary "
+        f"({type(error).__name__}). Transcription may still have completed; "
+        "check helsings_round.log if needed."
+    )
+
+
 async def _send_messages(token: str, user_ids: set[int], text: str) -> None:
     bot = Bot(token=token)
     async with bot:
@@ -184,8 +192,18 @@ def notify_users(token: str, user_ids: set[int], message: str) -> None:
     if not user_ids:
         logger.info("No voice users to notify")
         return
+
     logger.info("Notifying %d user(s)", len(user_ids))
-    asyncio.run(_send_messages(token, user_ids, message))
+    try:
+        asyncio.run(_send_messages(token, user_ids, message))
+    except Exception as exc:
+        logger.exception("Summary notification failed: %s", exc)
+        try:
+            failure_text = format_failure_message(exc)
+            asyncio.run(_send_messages(token, user_ids, failure_text))
+            logger.info("Sent failure notice to %d user(s)", len(user_ids))
+        except Exception:
+            logger.exception("Failure notification also failed")
 
 
 def start_bot() -> subprocess.Popen[bytes]:
