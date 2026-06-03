@@ -22,7 +22,7 @@ OUTPUT_DIR = Path(
     os.environ.get("HARKERS_OUTPUT_DIR", _ARCHIVE_ROOT / "transcripts")
 )
 MODEL_NAME = "large"
-SUPPORTED_EXTENSIONS = (".mp4", ".m4a", ".wav", ".ogg")
+SUPPORTED_EXTENSIONS = (".mp4", ".m4a", ".wav", ".ogg", ".WAV")
 
 logging.basicConfig(
     level=logging.INFO,

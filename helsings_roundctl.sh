@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Start, stop, restart, and inspect helsings_round.py (Seward + scheduled Mina).
+# Start, stop, restart, and inspect helsings_round.py (Seward + scheduled Mina + Dossier).
 #
 # Usage (from anywhere):
 #   ./helsings_roundctl.sh start|stop|restart|status|logs|logs-http

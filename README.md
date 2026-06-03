@@ -22,6 +22,7 @@ In modern terms: capture via Telegram, archive locally, transcribe with Whisper 
 | Mina typing phonograph cylinders | Whisper transcription → `transcripts/*.txt` via [mina_typewriter](mina_typewriter/) |
 | Letters, journals, telegrams | Typed Telegram notes → `transcripts/typed_notes_*.txt` |
 | Mina's assembled manuscript | The `transcripts/` folder — the compiled readable record |
+| Van Helsing's dossier | Daily Markdown notes in `dossier/` via [van_helsings_dossier](van_helsings_dossier/) |
 
 ## The circle
 
@@ -30,8 +31,9 @@ In modern terms: capture via Telegram, archive locally, transcribe with Whisper 
 | **Harker's Archive** | The compiled stack — many sources, one record | Monorepo root; shared `voice_archive/` and `transcripts/` | — |
 | [**Dr. Seward's Phonograph**](sewards_phonograph/) | Seward at the phonograph — voice preserved to cylinder | Telegram bot — saves voice (`.ogg`) and typed text (`.txt`) | [README →](sewards_phonograph/README.md) |
 | [**Mina's Typewriter**](mina_typewriter/) | Mina at the keys — whispers fixed to the page | Whisper batch transcription — CLI + Streamlit | [README →](mina_typewriter/README.md) |
+| [**Van Helsing's Dossier**](van_helsings_dossier/) | Van Helsing at the dossier — testimony ordered into one case file | Compile `transcripts/` into daily Obsidian Markdown | [README →](van_helsings_dossier/README.md) |
 
-**Root coordinator:** [`helsings_round.py`](helsings_round.py) + [`helsings_roundctl.sh`](helsings_roundctl.sh) — optional; runs the phonograph and schedules the typewriter without changing either sub-project.
+**Root coordinator:** [`helsings_round.py`](helsings_round.py) + [`helsings_roundctl.sh`](helsings_roundctl.sh) — optional; runs the phonograph, schedules the typewriter, and compiles/delivers the dossier without changing sub-projects.
 
 ## How it works
 
@@ -46,10 +48,12 @@ flowchart LR
   subgraph store["Record base (local)"]
     VA[(voice_archive/*.ogg)]
     TR[(transcripts/*.txt)]
+    DO[(dossier/*.md)]
   end
 
-  subgraph transcribe["Transcribe (manual or scheduled)"]
+  subgraph transcribe["Transcribe and compile (manual or scheduled)"]
     MT[Mina's Typewriter]
+    VD[Van Helsing's Dossier]
     AR[helsings_round.py]
   end
 
@@ -57,8 +61,11 @@ flowchart LR
   SP -->|plain text| TR
   VA --> MT
   MT -->|Whisper output| TR
+  TR --> VD
+  VD -->|daily Markdown| DO
   AR -.->|optional: bot + interval| SP
   AR -.->|optional: interval| MT
+  AR -.->|optional: interval| VD
 ```
 
 | Step | Tool | When |
@@ -66,7 +73,8 @@ flowchart LR
 | Capture voice | Seward's Phonograph | Automatic while the bot runs |
 | Capture text | Seward's Phonograph | Automatic while the bot runs |
 | Transcribe voice | Mina's Typewriter | Manual — run CLI or Streamlit when ready |
-| Run everything | `helsings_round.py` | Bot always on + transcribe every N minutes (see `TRANSCRIBE_INTERVAL_MINUTES`) |
+| Compile journal | Van Helsing's Dossier | Manual — run CLI when ready; or automatic via `helsings_round.py` |
+| Run everything | `helsings_round.py` | Bot always on + transcribe every N minutes + dossier compile/delivery (see `TRANSCRIBE_INTERVAL_MINUTES`, `DOSSIER_INTERVAL_MINUTES`) |
 
 Typed notes land in `transcripts/` immediately. Voice files wait in `voice_archive/` until you run Mina's Typewriter (or `helsings_round.py` on its schedule).
 
@@ -76,8 +84,10 @@ Typed notes land in `transcripts/` immediately. Voice files wait in `voice_archi
 harkers_archive/
 ├── voice_archive/       # raw audio (.ogg from Telegram) — gitignored
 ├── transcripts/         # typed notes + Whisper .txt output — gitignored
+├── dossier/             # compiled daily Markdown notes — gitignored
 ├── sewards_phonograph/  # Telegram capture bot
 ├── mina_typewriter/     # Whisper transcription
+├── van_helsings_dossier/ # transcript compiler → daily Markdown
 ├── helsings_round.py       # optional: bot + scheduled transcribe coordinator
 ├── helsings_roundctl.sh    # start / stop / restart / status / logs / logs-http
 ├── archive_logging.py      # splits Telegram HTTP traffic into a separate log file
@@ -92,6 +102,7 @@ harkers_archive/
 | Voice message | `{YYYYMMDD}_{HHMMSS}_{user_id}.ogg` | `20260524_151230_123456789.ogg` |
 | Typed note (daily file) | `typed_notes_{YYYYMMDD}_{user_id}.txt` | `typed_notes_20260524_123456789.txt` |
 | Whisper transcript | `{basename}.txt` + `{basename}_segments.txt` | `20260524_151230_123456789.txt` |
+| Dossier (daily journal) | `{YYYY-MM-DD}.md` | `2026-06-02.md` |
 
 Each typed note is appended with a timestamp: `[20260524_151230] Your message here.`
 
@@ -175,7 +186,18 @@ uv run streamlit run app.py
 
 Each voice file produces `<basename>.txt` and `<basename>_segments.txt`. The first run downloads Whisper model weights — see [mina_typewriter/README.md](mina_typewriter/README.md) for model choices and tuning.
 
-### 6. Run everything (`helsings_round.py`)
+### 6. Compile journal (Van Helsing's Dossier)
+
+Compile scattered transcripts into Obsidian-friendly daily Markdown notes:
+
+```bash
+cd van_helsings_dossier
+uv run python compile.py
+```
+
+Output lands in `dossier/` (one file per day, e.g. `2026-06-02.md`). Re-run after new transcripts arrive — only changed days are rebuilt. See [van_helsings_dossier/README.md](van_helsings_dossier/README.md) for format details.
+
+### 7. Run everything (`helsings_round.py`)
 
 To keep the phonograph running and transcribe on a schedule (default every 8 hours), from the **repo root**:
 
@@ -194,7 +216,11 @@ Foreground (same terminal):
 uv run python helsings_round.py
 ```
 
-Set `TRANSCRIBE_INTERVAL_MINUTES` in the root `.env` to change how often Mina's Typewriter runs. Users who recently sent voice notes receive a Telegram summary after each pass. If that summary cannot be sent (network or Telegram API error), the same users get a short failure notice instead; the runner keeps going and does not stop the capture bot. This script only calls the existing sub-projects via subprocess — it does not replace manual steps 4 and 5. Only one instance should run at a time.
+Set `TRANSCRIBE_INTERVAL_MINUTES` in the root `.env` to change how often Mina's Typewriter runs. Users who recently sent voice notes receive a Telegram summary after each pass. If that summary cannot be sent (network or Telegram API error), the same users get a short failure notice instead; the runner keeps going and does not stop the capture bot.
+
+Van Helsing's Dossier runs on the same coordinator: it compiles `transcripts/` into daily Markdown when new voice transcripts appear, or at least every 24 hours (see `DOSSIER_INTERVAL_MINUTES`). On that same 24-hour schedule, archive users receive the most recent daily dossier file (`.md`) as a Telegram document. Set `DOSSIER_ENABLED=false` to disable dossier compile and delivery while keeping capture and transcription.
+
+This script only calls the existing sub-projects via subprocess — it does not replace manual steps 4–6. Only one instance should run at a time.
 
 Background runs write two log files at the repo root (both gitignored): `helsings_round.log` for coordinator and bot activity, and `helsings_round_http.log` for frequent Telegram HTTP polling (`httpx`). Use `logs` and `logs-http` with the ctl script to tail each file.
 
@@ -209,7 +235,11 @@ All settings live in the root `.env`. Sub-projects resolve it automatically.
 | `TRANSCRIPTS_DIR` | Phonograph | No | Absolute path for typed notes; defaults to sibling `transcripts/` next to `SAVE_DIR` |
 | `HARKERS_INPUT_DIR` | Typewriter | No | Override input folder; defaults to `voice_archive/` |
 | `HARKERS_OUTPUT_DIR` | Typewriter | No | Override output folder; defaults to `transcripts/` |
+| `HARKERS_TRANSCRIPTS_DIR` | Dossier | No | Override transcript input; defaults to `transcripts/` |
+| `HARKERS_DOSSIER_DIR` | Dossier | No | Override dossier output; defaults to `dossier/` |
 | `TRANSCRIBE_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between scheduled transcription passes (default `480`) |
+| `DOSSIER_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between dossier compile/delivery cycles (default `1440`) |
+| `DOSSIER_ENABLED` | `helsings_round.py` | No | Enable dossier compile and Telegram delivery (default `true`) |
 | `HELSINGS_HTTP_LOG` | `archive_logging.py` | No | Absolute path for Telegram HTTP log; defaults to `helsings_round_http.log` in the repo root |
 
 ## Going deeper
@@ -218,6 +248,7 @@ Each module has its own README with artwork, troubleshooting, and reference docs
 
 - **[Dr. Seward's Phonograph](sewards_phonograph/README.md)** — commands, filename rules, background running, manual test plan
 - **[Mina's Typewriter](mina_typewriter/README.md)** — Whisper models, transcription options, Streamlit UI, CPU/GPU notes
+- **[Van Helsing's Dossier](van_helsings_dossier/README.md)** — compile transcripts into Obsidian daily Markdown notes
 
 ## The work continues
 
@@ -231,12 +262,13 @@ This archive is deliberately incomplete — a working manuscript, not a closed b
 |-----------|------|
 | Index / search across transcripts | Find passages across the compiled record |
 | Automatic transcription on capture | Phonograph → typewriter without a manual step | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
+| Daily dossier compile and delivery | Transcripts → Obsidian Markdown + Telegram | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
 | Summaries or cross-references | Collate related entries across days and sources |
 | Further witnesses | New capture or processing modules under the same record base |
 
 ### Adding a module
 
-Add a new top-level folder with its own `pyproject.toml`, then register it under `[tool.uv.workspace] members` in the root [pyproject.toml](pyproject.toml). Shared data stays in `voice_archive/` and `transcripts/`.
+Add a new top-level folder with its own `pyproject.toml`, then register it under `[tool.uv.workspace] members` in the root [pyproject.toml](pyproject.toml). Shared data stays in `voice_archive/`, `transcripts/`, and `dossier/`.
 
 ## License
 

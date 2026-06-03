@@ -12,7 +12,10 @@ voice_archive/*
 !voice_archive/.gitkeep
 transcripts/*
 !transcripts/.gitkeep
+dossier/*
+!dossier/.gitkeep
 
 # Sub-project local venvs
 sewards_phonograph/.venv/
 mina_typewriter/.venv/
+van_helsings_dossier/.venv/
