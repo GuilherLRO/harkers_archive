@@ -220,6 +220,8 @@ Set `TRANSCRIBE_INTERVAL_MINUTES` in the root `.env` to change how often Mina's 
 
 Van Helsing's Dossier runs on the same coordinator: it compiles `transcripts/` into daily Markdown when new voice transcripts appear, or at least every 24 hours (see `DOSSIER_INTERVAL_MINUTES`). On that same 24-hour schedule, archive users receive the most recent daily dossier file (`.md`) as a Telegram document. Set `DOSSIER_ENABLED=false` to disable dossier compile and delivery while keeping capture and transcription.
 
+On every start or restart, archive users receive a short Telegram message confirming the runner is active (disable with `STARTUP_NOTIFY_ENABLED=false`).
+
 This script only calls the existing sub-projects via subprocess — it does not replace manual steps 4–6. Only one instance should run at a time.
 
 Background runs write two log files at the repo root (both gitignored): `helsings_round.log` for coordinator and bot activity, and `helsings_round_http.log` for frequent Telegram HTTP polling (`httpx`). Use `logs` and `logs-http` with the ctl script to tail each file.
@@ -240,6 +242,7 @@ All settings live in the root `.env`. Sub-projects resolve it automatically.
 | `TRANSCRIBE_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between scheduled transcription passes (default `480`) |
 | `DOSSIER_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between dossier compile/delivery cycles (default `1440`) |
 | `DOSSIER_ENABLED` | `helsings_round.py` | No | Enable dossier compile and Telegram delivery (default `true`) |
+| `STARTUP_NOTIFY_ENABLED` | `helsings_round.py` | No | Telegram message to archive users when the runner starts (default `true`) |
 | `HELSINGS_HTTP_LOG` | `archive_logging.py` | No | Absolute path for Telegram HTTP log; defaults to `helsings_round_http.log` in the repo root |
 
 ## Going deeper

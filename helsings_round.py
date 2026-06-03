@@ -162,6 +162,10 @@ def dossier_enabled() -> bool:
     return _env_flag("DOSSIER_ENABLED", default=True)
 
 
+def startup_notify_enabled() -> bool:
+    return _env_flag("STARTUP_NOTIFY_ENABLED", default=True)
+
+
 def parse_user_id_from_voice_filename(name: str) -> int | None:
     """Extract telegram user id from YYYYMMDD_HHMMSS_{user_id}.ogg (optional _2 suffix)."""
     stem = Path(name).stem
@@ -275,6 +279,27 @@ def format_dossier_failure_message(error: BaseException) -> str:
     )
 
 
+def format_startup_message(
+    *,
+    interval_minutes: int,
+    dossier_interval_minutes: int,
+    run_dossier: bool,
+) -> str:
+    lines = [
+        "Harker's Archive — archive runner started.",
+        f"Transcription pass every {interval_minutes} minute(s).",
+    ]
+    if run_dossier:
+        lines.append(
+            "Van Helsing's Dossier — compile on new voice transcripts or every "
+            f"{dossier_interval_minutes} minute(s); journal delivery on the same "
+            f"{dossier_interval_minutes}-minute schedule."
+        )
+    else:
+        lines.append("Van Helsing's Dossier is disabled.")
+    return "\n".join(lines)
+
+
 async def _send_messages(token: str, user_ids: set[int], text: str) -> None:
     bot = Bot(token=token)
     async with bot:
@@ -324,6 +349,36 @@ def notify_users(token: str, user_ids: set[int], message: str) -> None:
             logger.info("Sent failure notice to %d user(s)", len(user_ids))
         except Exception:
             logger.exception("Failure notification also failed")
+
+
+def notify_startup(
+    token: str,
+    voice_dir: Path,
+    transcripts_dir: Path,
+    *,
+    interval_minutes: int,
+    dossier_interval_minutes: int,
+    run_dossier: bool,
+) -> None:
+    if not startup_notify_enabled():
+        logger.info("Startup notification disabled")
+        return
+
+    user_ids = archive_user_ids(voice_dir, transcripts_dir)
+    if not user_ids:
+        logger.info("No archive users to notify on startup")
+        return
+
+    message = format_startup_message(
+        interval_minutes=interval_minutes,
+        dossier_interval_minutes=dossier_interval_minutes,
+        run_dossier=run_dossier,
+    )
+    logger.info("Sending startup notification to %d user(s)", len(user_ids))
+    try:
+        asyncio.run(_send_messages(token, user_ids, message))
+    except Exception:
+        logger.exception("Startup notification failed")
 
 
 def deliver_dossier_file(token: str, user_ids: set[int], path: Path) -> None:
@@ -559,6 +614,15 @@ def main() -> None:
             "Archive runner active — transcribe every %d minute(s), dossier disabled",
             interval_minutes,
         )
+
+    notify_startup(
+        token,
+        voice_dir,
+        transcripts_dir,
+        interval_minutes=interval_minutes,
+        dossier_interval_minutes=dossier_interval_minutes,
+        run_dossier=run_dossier,
+    )
 
     last_pass_time = time.time() - interval_seconds
     last_dossier_compile_time = time.time()
