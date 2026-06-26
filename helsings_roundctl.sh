@@ -3,8 +3,13 @@
 #
 # Usage (from anywhere):
 #   ./helsings_roundctl.sh start|stop|restart|status|logs|logs-http
+#   bash helsings_roundctl.sh start|stop|restart|status|logs|logs-http
 #
 # Run from the repo root where .env lives.
+
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec /usr/bin/env bash "$0" "$@"
+fi
 
 set -euo pipefail
 
