@@ -34,7 +34,7 @@ In modern terms: capture via Telegram, archive locally, transcribe with Whisper 
 | [**Mina's Typewriter**](mina_typewriter/) | Mina at the keys — whispers fixed to the page | Whisper batch transcription — CLI + Streamlit | [README →](mina_typewriter/README.md) |
 | [**Van Helsing's Dossier**](van_helsings_dossier/) | Van Helsing at the dossier — testimony ordered into one case file | Compile `transcripts/` into daily Obsidian Markdown | [README →](van_helsings_dossier/README.md) |
 
-**Root coordinator:** [`helsings_round.py`](helsings_round.py) + [`helsings_roundctl.sh`](helsings_roundctl.sh) — optional; runs the phonograph, schedules the typewriter, and compiles/delivers the dossier without changing sub-projects.
+**Root coordinator:** [`helsings_round.py`](helsings_round.py) + [`helsings_roundctl.sh`](helsings_roundctl.sh) — optional; runs the phonograph, schedules the typewriter, compiles/delivers the dossier, and refreshes Rainfields Mind weekly notes without changing sub-projects.
 
 ## How it works
 
@@ -65,7 +65,7 @@ flowchart LR
   MT -->|Whisper output| TR
   TR --> VD
   VD -->|daily Markdown| DO
-  DO -.->|manual or future route| RM
+  DO -->|Rainfields agent| RM
   AR -.->|optional: bot + interval| SP
   AR -.->|optional: interval| MT
   AR -.->|optional: interval| VD
@@ -77,8 +77,8 @@ flowchart LR
 | Capture text | Seward's Phonograph | Automatic while the bot runs |
 | Transcribe voice | Mina's Typewriter | Manual — run CLI or Streamlit when ready |
 | Compile dossier | Van Helsing's Dossier | Manual — run CLI when ready; or automatic via `helsings_round.py` |
-| Rainfields Mind | `rainfields_mind/` | Manual — LLM or by hand; see [Rainfields Mind](#rainfields-mind) |
-| Run everything | `helsings_round.py` | Bot always on + transcribe every N minutes + dossier compile/delivery (see `TRANSCRIBE_INTERVAL_MINUTES`, `DOSSIER_INTERVAL_MINUTES`) |
+| Rainfields Mind | `rainfields_mind/` | Agent or manual — see [Rainfields Mind](#rainfields-mind) |
+| Run everything | `helsings_round.py` | Bot always on + daily transcription + dossier compile + weekly note delivery (see `TRANSCRIBE_INTERVAL_MINUTES`, `DOSSIER_INTERVAL_MINUTES`) |
 
 Typed notes land in `transcripts/` immediately. Voice files wait in `voice_archive/` until you run Mina's Typewriter (or `helsings_round.py` on its schedule).
 
@@ -161,20 +161,24 @@ Full checklist, copy-paste prompt, and worked example: [rainfields_mind/WEEKLY_J
 
 Weekly notes are primarily in **Portuguese**; keep **English** for reading logs, Cambly notes, and book quotes when the original wording matters.
 
-### Future automation hook
+### Automated agent
 
-There is **no scheduled route yet** — `helsings_round.py` does not call the Rainfields Mind layer. To add one later (CLI, cron, Telegram command, or new sub-package), a minimal contract would be:
+[`compile_week.py`](rainfields_mind/agent/compile_week.py) synthesizes weekly notes via the LangGraph + OpenAI pipeline in [`rainfields_mind/agent/`](rainfields_mind/agent/). It loads [WEEKLY_JOURNAL_INSTRUCTIONS.md](rainfields_mind/WEEKLY_JOURNAL_INSTRUCTIONS.md) and [TAGGING_SYSTEM.md](rainfields_mind/TAGGING_SYSTEM.md) at runtime, updates only dirty weeks, and writes reasoning logs to `rainfields_mind/agent/runs/`.
+
+```bash
+cd rainfields_mind/agent && uv run python compile_week.py
+```
+
+See [rainfields_mind/README.md](rainfields_mind/README.md) for CLI flags, env vars, and cron setup. When using `helsings_round.py`, weekly notes refresh automatically after each transcription pass (after dossier compile when enabled). Set `RAINFIELDS_ENABLED=false` to disable.
 
 | | |
 |--|--|
-| **Trigger** | End of ISO week, or on demand (`--week 2026-W26`) |
-| **Read** | `dossier/YYYY-MM-DD.md` for each day in the week; `rainfields_mind/weekly/YYYY-W(N-1).md`; `rainfields_mind/WEEKLY_JOURNAL_INSTRUCTIONS.md`; `rainfields_mind/TAGGING_SYSTEM.md` |
-| **Write** | `rainfields_mind/weekly/YYYY-WNN.md`; append row to `rainfields_mind/index.md` |
+| **Trigger** | Daily cron, or on demand (`--week 2026-W26`) |
+| **Read** | `dossier/YYYY-MM-DD.md`; `rainfields_mind/weekly/YYYY-W(N-1).md`; instruction markdown |
+| **Write** | `rainfields_mind/weekly/YYYY-WNN.md`; `rainfields_mind/index.md`; candidate tags in `TAGGING_SYSTEM.md` |
 | **Do not modify** | `dossier/`, `transcripts/`, `voice_archive/`, existing sub-projects |
 | **Week boundaries** | ISO week, Monday–Sunday, timezone `America/Fortaleza` |
 | **Provenance** | Preserve `entry_id` from dossier entries in the `Índice de fontes` table |
-
-A future module could live at repo root (e.g. `rainfields_mind/compile_week.py`) or as a new workspace member — same pattern as `van_helsings_dossier`: read-only on upstream data, write-only on `rainfields_mind/`. Point the implementation at `WEEKLY_JOURNAL_INSTRUCTIONS.md` as the spec; no Cursor-specific APIs required.
 
 ## Prerequisites
 
@@ -184,6 +188,7 @@ A future module could live at repo root (e.g. `rainfields_mind/compile_week.py`)
 | **[uv](https://docs.astral.sh/uv/)** | Dependency management |
 | **ffmpeg** (`brew install ffmpeg`) | Mina's Typewriter |
 | **Telegram bot token** ([@BotFather](https://t.me/BotFather)) | Seward's Phonograph |
+| **OpenAI API key** | Rainfields Mind agent (`compile_week.py`) |
 
 ## Tutorial
 
@@ -269,11 +274,11 @@ Output lands in `dossier/` (one file per day, e.g. `2026-06-02.md`). Re-run afte
 
 ### 7. Rainfields Mind
 
-After dossiers exist for a full ISO week, synthesize the weekly note — see [Rainfields Mind](#rainfields-mind). This step is manual today (LLM or by hand); it is not part of `helsings_round.py`.
+After dossiers exist for a full ISO week, synthesize the weekly note — see [Rainfields Mind](#rainfields-mind). Run `compile_week.py` manually, or let `helsings_round.py` refresh dirty weeks after each transcription pass.
 
 ### 8. Run everything (`helsings_round.py`)
 
-To keep the phonograph running and transcribe on a schedule (default every 8 hours), from the **repo root**:
+To keep the phonograph running and transcribe on a schedule (default once a day), from the **repo root**:
 
 ```bash
 ./helsings_roundctl.sh start    # background + log file
@@ -292,13 +297,25 @@ uv run python helsings_round.py
 
 Set `TRANSCRIBE_INTERVAL_MINUTES` in the root `.env` to change how often Mina's Typewriter runs. Users who recently sent voice notes receive a Telegram summary after each pass. If that summary cannot be sent (network or Telegram API error), the same users get a short failure notice instead; the runner keeps going and does not stop the capture bot.
 
-Van Helsing's Dossier runs on the same coordinator: it compiles `transcripts/` into daily Markdown when new voice transcripts appear, or at least every 24 hours (see `DOSSIER_INTERVAL_MINUTES`). On that same 24-hour schedule, archive users receive the most recent daily dossier file (`.md`) as a Telegram document. Set `DOSSIER_ENABLED=false` to disable dossier compile and delivery while keeping capture and transcription.
+Van Helsing's Dossier runs on the same coordinator: it compiles `transcripts/` into daily Markdown when new voice transcripts appear, or at least every 24 hours (see `DOSSIER_INTERVAL_MINUTES`). Set `DOSSIER_ENABLED=false` to disable dossier compile while keeping capture and transcription.
+
+Rainfields Mind runs after each transcription pass (and after dossier compile when enabled): it checks for dirty ISO weeks and calls the LLM only when dossiers changed or a weekly note is missing. On the same 24-hour schedule (`DOSSIER_INTERVAL_MINUTES`), archive users receive the most recent weekly note (`.md`) from `rainfields_mind/weekly/` as a Telegram document. Set `RAINFIELDS_ENABLED=false` to skip weekly synthesis while keeping capture and transcription.
 
 On every start or restart, archive users receive a short Telegram message confirming the runner is active (disable with `STARTUP_NOTIFY_ENABLED=false`).
 
 This script only calls the existing sub-projects via subprocess — it does not replace manual steps 4–6. Only one instance should run at a time.
 
 Background runs write two log files at the repo root (both gitignored): `helsings_round.log` for coordinator and bot activity, and `helsings_round_http.log` for frequent Telegram HTTP polling (`httpx`). Use `logs` and `logs-http` with the ctl script to tail each file.
+
+## Testing
+
+Use [TEST_PLAN.md](TEST_PLAN.md) as the full module and end-to-end checklist. The fast local checks are:
+
+```bash
+uv sync --all-packages
+uv run python -m py_compile helsings_round.py archive_logging.py
+cd rainfields_mind/agent && uv run pytest
+```
 
 ## Configuration
 
@@ -313,9 +330,10 @@ All settings live in the root `.env`. Sub-projects resolve it automatically.
 | `HARKERS_OUTPUT_DIR` | Typewriter | No | Override output folder; defaults to `transcripts/` |
 | `HARKERS_TRANSCRIPTS_DIR` | Dossier | No | Override transcript input; defaults to `transcripts/` |
 | `HARKERS_DOSSIER_DIR` | Dossier | No | Override dossier output; defaults to `dossier/` |
-| `TRANSCRIBE_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between scheduled transcription passes (default `480`) |
-| `DOSSIER_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between dossier compile/delivery cycles (default `1440`) |
-| `DOSSIER_ENABLED` | `helsings_round.py` | No | Enable dossier compile and Telegram delivery (default `true`) |
+| `TRANSCRIBE_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between scheduled transcription passes (default `1440`) |
+| `DOSSIER_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between dossier compile and weekly note delivery cycles (default `1440`) |
+| `DOSSIER_ENABLED` | `helsings_round.py` | No | Enable dossier compile (default `true`) |
+| `RAINFIELDS_ENABLED` | `helsings_round.py` | No | Refresh Rainfields Mind weekly notes after each transcription pass (default `true`) |
 | `STARTUP_NOTIFY_ENABLED` | `helsings_round.py` | No | Telegram message to archive users when the runner starts (default `true`) |
 | `HELSINGS_HTTP_LOG` | `archive_logging.py` | No | Absolute path for Telegram HTTP log; defaults to `helsings_round_http.log` in the repo root |
 
@@ -340,8 +358,9 @@ This archive is deliberately incomplete — a working manuscript, not a closed b
 |-----------|------|
 | Index / search across transcripts | Find passages across the compiled record |
 | Automatic transcription on capture | Phonograph → typewriter without a manual step | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
-| Daily dossier compile and delivery | Transcripts → Obsidian Markdown + Telegram | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
-| Rainfields Mind | Dossier → tagged weekly synthesis in `rainfields_mind/weekly/` | **Partial** — instructions and sample weeks in [`rainfields_mind/`](rainfields_mind/); no automated route yet |
+| Daily dossier compile | Transcripts → Obsidian Markdown | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
+| Weekly note delivery | Rainfields Mind → Telegram document | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
+| Rainfields Mind | Dossier → tagged weekly synthesis in `rainfields_mind/weekly/` | **Partial** — [`agent/compile_week.py`](rainfields_mind/agent/compile_week.py); automatic via `helsings_round.py` after each transcription pass |
 | Summaries or cross-references | Collate related entries across days and sources |
 | Further witnesses | New capture or processing modules under the same record base |
 

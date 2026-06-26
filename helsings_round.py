@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Run Seward's Phonograph and schedule Mina's Typewriter and Van Helsing's Dossier.
+"""Run Seward's Phonograph and schedule Mina's Typewriter, Van Helsing's Dossier, and Rainfields Mind.
 
-Root coordinator. Does not modify sub-projects: starts bot.py, transcribe.py, and
-compile.py via subprocess.
+Root coordinator. Does not modify sub-projects: starts bot.py, transcribe.py,
+compile.py, and compile_week.py via subprocess.
 
 Run from the repo root (where .env lives):
 
@@ -42,7 +42,6 @@ import re
 import signal
 import subprocess
 import time
-from datetime import date
 from pathlib import Path
 
 from archive_logging import configure_logging
@@ -54,9 +53,10 @@ configure_logging(REPO_ROOT)
 SEWARD_DIR = REPO_ROOT / "sewards_phonograph"
 MINA_DIR = REPO_ROOT / "mina_typewriter"
 DOSSIER_DIR = REPO_ROOT / "van_helsings_dossier"
+RAINFIELDS_AGENT_DIR = REPO_ROOT / "rainfields_mind" / "agent"
 VOICE_EXTENSIONS = (".ogg", ".m4a", ".mp4", ".wav", ".WAV")
 
-DEFAULT_INTERVAL_MINUTES = 480
+DEFAULT_INTERVAL_MINUTES = 1440
 DEFAULT_DOSSIER_INTERVAL_MINUTES = 1440
 
 logger = logging.getLogger(__name__)
@@ -142,6 +142,16 @@ def load_dossier_dir(voice_dir: Path) -> Path:
     return voice_dir.parent / "dossier"
 
 
+def load_rainfields_dir() -> Path:
+    raw = os.environ.get("HARKERS_RAINFIELDS_DIR", "").strip()
+    if raw:
+        path = Path(raw).expanduser()
+        if not path.is_absolute():
+            raise ConfigurationError("HARKERS_RAINFIELDS_DIR must be an absolute path")
+        return path
+    return REPO_ROOT / "rainfields_mind"
+
+
 def load_interval_minutes() -> int:
     return _parse_positive_int(
         os.environ.get("TRANSCRIBE_INTERVAL_MINUTES", "").strip(),
@@ -160,6 +170,10 @@ def load_dossier_interval_minutes() -> int:
 
 def dossier_enabled() -> bool:
     return _env_flag("DOSSIER_ENABLED", default=True)
+
+
+def rainfields_enabled() -> bool:
+    return _env_flag("RAINFIELDS_ENABLED", default=True)
 
 
 def startup_notify_enabled() -> bool:
@@ -228,17 +242,24 @@ def recent_voice_user_ids(voice_dir: Path, since_epoch: float) -> set[int]:
     return user_ids
 
 
-def latest_dossier_file(dossier_dir: Path) -> Path | None:
+def parse_iso_week_stem(stem: str) -> tuple[int, int] | None:
+    match = re.match(r"^(\d{4})-W(\d{2})$", stem)
+    if not match:
+        return None
+    return int(match.group(1)), int(match.group(2))
+
+
+def latest_weekly_file(rainfields_dir: Path) -> Path | None:
+    weekly_dir = rainfields_dir / "weekly"
+    if not weekly_dir.is_dir():
+        return None
     candidates: list[Path] = []
-    for path in dossier_dir.glob("*.md"):
-        try:
-            date.fromisoformat(path.stem)
-        except ValueError:
-            continue
-        candidates.append(path)
+    for path in weekly_dir.glob("*.md"):
+        if parse_iso_week_stem(path.stem) is not None:
+            candidates.append(path)
     if not candidates:
         return None
-    return max(candidates, key=lambda item: item.stem)
+    return max(candidates, key=lambda item: parse_iso_week_stem(item.stem) or (0, 0))
 
 
 def format_notify_message(
@@ -265,16 +286,16 @@ def format_transcribe_failure_message(error: BaseException) -> str:
     )
 
 
-def format_dossier_delivery_caption(path: Path) -> str:
+def format_weekly_delivery_caption(path: Path) -> str:
     return (
-        "Van Helsing's Dossier — your most recent journal day "
+        "Rainfields Mind — your most recent weekly note "
         f"({path.stem})."
     )
 
 
-def format_dossier_failure_message(error: BaseException) -> str:
+def format_weekly_delivery_failure_message(error: BaseException) -> str:
     return (
-        "Van Helsing's Dossier — could not deliver the daily journal file "
+        "Rainfields Mind — could not deliver the weekly note "
         f"({type(error).__name__}). Check helsings_round.log if needed."
     )
 
@@ -284,6 +305,7 @@ def format_startup_message(
     interval_minutes: int,
     dossier_interval_minutes: int,
     run_dossier: bool,
+    run_rainfields: bool,
 ) -> str:
     lines = [
         "Harker's Archive — archive runner started.",
@@ -292,11 +314,21 @@ def format_startup_message(
     if run_dossier:
         lines.append(
             "Van Helsing's Dossier — compile on new voice transcripts or every "
-            f"{dossier_interval_minutes} minute(s); journal delivery on the same "
-            f"{dossier_interval_minutes}-minute schedule."
+            f"{dossier_interval_minutes} minute(s)."
         )
     else:
         lines.append("Van Helsing's Dossier is disabled.")
+    if run_rainfields:
+        lines.append(
+            "Rainfields Mind — refresh weekly notes after each transcription pass "
+            "when dossiers change; deliver the latest weekly note every "
+            f"{dossier_interval_minutes} minute(s)."
+        )
+    else:
+        lines.append(
+            "Rainfields Mind refresh is disabled; latest weekly note delivery still "
+            f"runs every {dossier_interval_minutes} minute(s)."
+        )
     return "\n".join(lines)
 
 
@@ -311,7 +343,7 @@ async def _send_messages(token: str, user_ids: set[int], text: str) -> None:
                 logger.exception("Failed to notify user %s", user_id)
 
 
-async def _send_dossier_documents(
+async def _send_weekly_documents(
     token: str,
     user_ids: set[int],
     path: Path,
@@ -328,9 +360,9 @@ async def _send_dossier_documents(
                         filename=path.name,
                         caption=caption,
                     )
-                logger.info("Delivered dossier %s to user %s", path.name, user_id)
+                logger.info("Delivered weekly note %s to user %s", path.name, user_id)
             except Exception:
-                logger.exception("Failed to deliver dossier to user %s", user_id)
+                logger.exception("Failed to deliver weekly note to user %s", user_id)
 
 
 def notify_users(token: str, user_ids: set[int], message: str) -> None:
@@ -359,6 +391,7 @@ def notify_startup(
     interval_minutes: int,
     dossier_interval_minutes: int,
     run_dossier: bool,
+    run_rainfields: bool,
 ) -> None:
     if not startup_notify_enabled():
         logger.info("Startup notification disabled")
@@ -373,6 +406,7 @@ def notify_startup(
         interval_minutes=interval_minutes,
         dossier_interval_minutes=dossier_interval_minutes,
         run_dossier=run_dossier,
+        run_rainfields=run_rainfields,
     )
     logger.info("Sending startup notification to %d user(s)", len(user_ids))
     try:
@@ -381,26 +415,26 @@ def notify_startup(
         logger.exception("Startup notification failed")
 
 
-def deliver_dossier_file(token: str, user_ids: set[int], path: Path) -> None:
+def deliver_weekly_file(token: str, user_ids: set[int], path: Path) -> None:
     if not user_ids:
-        logger.info("No archive users to receive dossier delivery")
+        logger.info("No archive users to receive weekly delivery")
         return
 
-    caption = format_dossier_delivery_caption(path)
+    caption = format_weekly_delivery_caption(path)
     logger.info(
-        "Delivering dossier %s to %d user(s)",
+        "Delivering weekly note %s to %d user(s)",
         path.name,
         len(user_ids),
     )
     try:
-        asyncio.run(_send_dossier_documents(token, user_ids, path, caption))
+        asyncio.run(_send_weekly_documents(token, user_ids, path, caption))
     except Exception as exc:
-        logger.exception("Dossier delivery failed: %s", exc)
+        logger.exception("Weekly delivery failed: %s", exc)
         try:
-            failure_text = format_dossier_failure_message(exc)
+            failure_text = format_weekly_delivery_failure_message(exc)
             asyncio.run(_send_messages(token, user_ids, failure_text))
         except Exception:
-            logger.exception("Dossier failure notification also failed")
+            logger.exception("Weekly delivery failure notification also failed")
 
 
 def start_bot() -> subprocess.Popen[bytes]:
@@ -472,6 +506,60 @@ def run_dossier_compile(transcripts_dir: Path, dossier_dir: Path) -> int:
     return written
 
 
+def run_rainfields_compile(dossier_dir: Path, rainfields_dir: Path) -> None:
+    logger.info("Running Rainfields Mind (compile_week.py)")
+    result = subprocess.run(
+        [
+            "uv",
+            "run",
+            "python",
+            "compile_week.py",
+            "--dossier-dir",
+            str(dossier_dir),
+            "--rainfields-dir",
+            str(rainfields_dir),
+            "--json-summary",
+        ],
+        cwd=RAINFIELDS_AGENT_DIR,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        logger.warning(
+            "compile_week.py exited with code %s\nstdout: %s\nstderr: %s",
+            result.returncode,
+            result.stdout.strip(),
+            result.stderr.strip(),
+        )
+        return
+
+    summary_line = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    try:
+        payload = json.loads(summary_line)
+    except json.JSONDecodeError:
+        logger.warning("Could not parse Rainfields compile summary: %r", summary_line)
+        return
+
+    if payload.get("skipped"):
+        logger.info("Rainfields compile complete — no weekly updates needed")
+        return
+
+    compiled = payload.get("compiled", [])
+    if compiled:
+        weeks = ", ".join(item.get("week", "?") for item in compiled)
+        logger.info(
+            "Rainfields compile complete — %d weekly file(s) updated (%s)",
+            len(compiled),
+            weeks,
+        )
+    elif payload.get("errors"):
+        logger.warning(
+            "Rainfields compile finished with errors: %s",
+            payload.get("errors"),
+        )
+
+
 def _handle_shutdown(signum: int, _frame: object) -> None:
     global _shutting_down
     if _shutting_down:
@@ -482,44 +570,48 @@ def _handle_shutdown(signum: int, _frame: object) -> None:
     raise SystemExit(0)
 
 
-def maybe_run_dossier(
-    token: str,
-    voice_dir: Path,
+def maybe_run_dossier_compile(
     transcripts_dir: Path,
     dossier_dir: Path,
     *,
     new_transcripts: bool,
     last_compile_time: float,
-    last_delivery_time: float,
     dossier_interval_seconds: float,
-) -> tuple[float, float]:
+) -> float:
     now = time.time()
     compile_due = new_transcripts or (
         now - last_compile_time >= dossier_interval_seconds
     )
-    delivery_due = now - last_delivery_time >= dossier_interval_seconds
+    if not compile_due:
+        return last_compile_time
 
-    if not compile_due and not delivery_due:
-        return last_compile_time, last_delivery_time
+    run_dossier_compile(transcripts_dir, dossier_dir)
+    return now
 
-    if compile_due or delivery_due:
-        run_dossier_compile(transcripts_dir, dossier_dir)
-        if compile_due:
-            last_compile_time = now
 
-    if delivery_due:
-        latest = latest_dossier_file(dossier_dir)
-        if latest is None:
-            logger.info("Dossier delivery due, but no daily Markdown files found")
-        else:
-            deliver_dossier_file(
-                token,
-                archive_user_ids(voice_dir, transcripts_dir),
-                latest,
-            )
-        last_delivery_time = now
+def maybe_deliver_weekly(
+    token: str,
+    voice_dir: Path,
+    transcripts_dir: Path,
+    rainfields_dir: Path,
+    *,
+    last_delivery_time: float,
+    delivery_interval_seconds: float,
+) -> float:
+    now = time.time()
+    if now - last_delivery_time < delivery_interval_seconds:
+        return last_delivery_time
 
-    return last_compile_time, last_delivery_time
+    latest = latest_weekly_file(rainfields_dir)
+    if latest is None:
+        logger.info("Weekly delivery due, but no weekly Markdown files found")
+    else:
+        deliver_weekly_file(
+            token,
+            archive_user_ids(voice_dir, transcripts_dir),
+            latest,
+        )
+    return now
 
 
 def run_pass(
@@ -527,12 +619,14 @@ def run_pass(
     voice_dir: Path,
     transcripts_dir: Path,
     dossier_dir: Path,
+    rainfields_dir: Path,
     since_epoch: float,
     *,
     dossier_interval_seconds: float,
     last_dossier_compile_time: float,
-    last_dossier_delivery_time: float,
+    last_weekly_delivery_time: float,
     run_dossier: bool,
+    run_rainfields: bool,
 ) -> tuple[PassResult, float, float]:
     pending_before = missing_transcripts(voice_dir, transcripts_dir)
     notify_ids = recent_voice_user_ids(voice_dir, since_epoch)
@@ -556,18 +650,27 @@ def run_pass(
     notify_users(token, notify_ids, message)
 
     compile_time = last_dossier_compile_time
-    delivery_time = last_dossier_delivery_time
+    delivery_time = last_weekly_delivery_time
     if run_dossier:
-        compile_time, delivery_time = maybe_run_dossier(
-            token,
-            voice_dir,
+        compile_time = maybe_run_dossier_compile(
             transcripts_dir,
             dossier_dir,
             new_transcripts=transcribed_count > 0,
             last_compile_time=last_dossier_compile_time,
-            last_delivery_time=last_dossier_delivery_time,
             dossier_interval_seconds=dossier_interval_seconds,
         )
+
+    if run_rainfields:
+        run_rainfields_compile(dossier_dir, rainfields_dir)
+
+    delivery_time = maybe_deliver_weekly(
+        token,
+        voice_dir,
+        transcripts_dir,
+        rainfields_dir,
+        last_delivery_time=last_weekly_delivery_time,
+        delivery_interval_seconds=dossier_interval_seconds,
+    )
 
     return (
         PassResult(time.time(), transcribed_count),
@@ -586,6 +689,7 @@ def main() -> None:
         voice_dir = load_save_dir()
         transcripts_dir = load_transcripts_dir(voice_dir)
         dossier_dir = load_dossier_dir(voice_dir)
+        rainfields_dir = load_rainfields_dir()
     except ConfigurationError as exc:
         logger.error("%s", exc)
         raise SystemExit(1) from exc
@@ -595,24 +699,46 @@ def main() -> None:
     dossier_interval_minutes = load_dossier_interval_minutes()
     dossier_interval_seconds = dossier_interval_minutes * 60
     run_dossier = dossier_enabled()
+    run_rainfields = rainfields_enabled()
 
     signal.signal(signal.SIGINT, _handle_shutdown)
     signal.signal(signal.SIGTERM, _handle_shutdown)
 
     _bot_proc = start_bot()
-    if run_dossier:
+    if run_dossier and run_rainfields:
         logger.info(
             "Archive runner active — transcribe every %d minute(s), "
             "dossier compile on new transcripts or every %d minute(s), "
-            "dossier delivery every %d minute(s)",
+            "Rainfields weekly refresh after each pass, "
+            "weekly note delivery every %d minute(s)",
             interval_minutes,
             dossier_interval_minutes,
             dossier_interval_minutes,
         )
+    elif run_dossier:
+        logger.info(
+            "Archive runner active — transcribe every %d minute(s), "
+            "dossier compile on new transcripts or every %d minute(s), "
+            "weekly note delivery every %d minute(s), Rainfields disabled",
+            interval_minutes,
+            dossier_interval_minutes,
+            dossier_interval_minutes,
+        )
+    elif run_rainfields:
+        logger.info(
+            "Archive runner active — transcribe every %d minute(s), "
+            "dossier disabled, Rainfields weekly refresh after each pass, "
+            "weekly note delivery every %d minute(s)",
+            interval_minutes,
+            dossier_interval_minutes,
+        )
     else:
         logger.info(
-            "Archive runner active — transcribe every %d minute(s), dossier disabled",
+            "Archive runner active — transcribe every %d minute(s), "
+            "dossier and Rainfields refresh disabled, "
+            "weekly note delivery every %d minute(s)",
             interval_minutes,
+            dossier_interval_minutes,
         )
 
     notify_startup(
@@ -622,11 +748,12 @@ def main() -> None:
         interval_minutes=interval_minutes,
         dossier_interval_minutes=dossier_interval_minutes,
         run_dossier=run_dossier,
+        run_rainfields=run_rainfields,
     )
 
     last_pass_time = time.time() - interval_seconds
     last_dossier_compile_time = time.time()
-    last_dossier_delivery_time = time.time()
+    last_weekly_delivery_time = time.time()
 
     try:
         while not _shutting_down:
@@ -634,16 +761,18 @@ def main() -> None:
                 logger.error("Bot process exited with code %s", _bot_proc.returncode)
                 raise SystemExit(1)
 
-            pass_result, last_dossier_compile_time, last_dossier_delivery_time = run_pass(
+            pass_result, last_dossier_compile_time, last_weekly_delivery_time = run_pass(
                 token,
                 voice_dir,
                 transcripts_dir,
                 dossier_dir,
+                rainfields_dir,
                 last_pass_time,
                 dossier_interval_seconds=dossier_interval_seconds,
                 last_dossier_compile_time=last_dossier_compile_time,
-                last_dossier_delivery_time=last_dossier_delivery_time,
+                last_weekly_delivery_time=last_weekly_delivery_time,
                 run_dossier=run_dossier,
+                run_rainfields=run_rainfields,
             )
             last_pass_time = pass_result.pass_time
 

@@ -55,6 +55,8 @@ Use these from the first weekly pass:
 
 ## Candidate tags (promote when recurring)
 
+<!-- agent 2026-06-26 -->
+- `reading/the-two-towers` — Quotes or passages from J.R.R. Tolkien’s The Two Towers
 Introduce only when at least two entries need the tag, or one entry is a clear recurring search path:
 
 - `work/shipt` — Shipt/Amazon same-day delivery client work

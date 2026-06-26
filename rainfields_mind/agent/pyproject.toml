@@ -1,0 +1,24 @@
+[project]
+name = "rainfields-mind-agent"
+version = "0.1.0"
+description = "Weekly synthesis agent for Rainfields Mind — dossier to tagged weekly notes"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+dependencies = [
+    "python-dotenv>=1.0.0",
+    "langgraph>=0.4.0",
+    "langchain-openai>=0.3.0",
+    "langchain-core>=0.3.0",
+    "pydantic>=2.0",
+    "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

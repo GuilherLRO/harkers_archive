@@ -299,6 +299,10 @@ For voice-captured quotes:
 4. If a new tag was introduced, update `TAGGING_SYSTEM.md`, then audit and update previous weekly notes where the tag applies
 5. If a tag was renamed, split, or merged, update affected previous weekly notes and document the change in `TAGGING_SYSTEM.md`
 
+## Automated agent
+
+[`compile_week.py`](agent/compile_week.py) loads this file and [TAGGING_SYSTEM.md](TAGGING_SYSTEM.md) at runtime as the workflow spec. Agent code, manifest, and run logs live under [`agent/`](agent/). The same rules apply: five passes, Portuguese narrative, English tags, provenance in the source index. The agent only writes under `rainfields_mind/` (weekly notes, index, candidate tags) and never modifies `dossier/`.
+
 ## Trigger phrases
 
 Use this workflow when the user asks to:

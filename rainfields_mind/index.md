@@ -6,11 +6,12 @@ Weekly synthesis notes derived from `dossier/`. See [README.md](README.md) and [
 
 | Week | Range | Summary |
 |------|-------|---------|
-| [2026-W21](weekly/2026-W21.md) | 2026-05-18 .. 2026-05-24 | First capture day: Poe and Faramir quotes only (partial week) |
-| [2026-W22](weekly/2026-W22.md) | 2026-05-25 .. 2026-05-31 | Rainfields Mind vision, reading streak ch. 4–10, scholarship signed, first date of the year |
-| [2026-W23](weekly/2026-W23.md) | 2026-06-01 .. 2026-06-07 | Cambly, reading ch. 11, reasoning-agent idea, forró, trip to Mossoró, socorro visit |
-| [2026-W24](weekly/2026-W24.md) | 2026-06-08 .. 2026-06-14 | Sparse capture; ideal 9–5 workday; grief and velório; family notes in Mossoró |
-| [2026-W25](weekly/2026-W25.md) | 2026-06-15 .. 2026-06-21 | Family frustration, dream processing, article finished, scattered typed notes |
+| [2026-W21](weekly/2026-W21.md) | 2026-05-18 .. 2026-05-24 | Citações de Poe e Faramir. |
+| [2026-W22](weekly/2026-W22.md) | 2026-05-25 .. 2026-05-31 | Progresso em leitura, mestrado e projetos, ajustes de produtividade e primeiro date do ano |
+| [2026-W23](weekly/2026-W23.md) | 2026-06-01 .. 2026-06-07 | Reflexões sobre produtividade e sono, progresso em mestrado e leitura, projetos de app e journaling, vida pessoal com viagem a Mossoró e forró. |
+| [2026-W24](weekly/2026-W24.md) | 2026-06-08 .. 2026-06-14 | 2026-W24: Acompanhamento de Socorro em Mossoró e velório, dia produtivo para Ariat e Nike, planejamento de mestrado com QA, registros de rotina e citações de forró |
+| [2026-W25](weekly/2026-W25.md) | 2026-06-15 .. 2026-06-21 | 2026-W25: Avanço na submissão do artigo de mestrado, reflexões sobre frustração e dinâmica familiar |
+| [2026-W26](weekly/2026-W26.md) | 2026-06-22 .. 2026-06-28 | Viagem a Mossoró com submissão de artigo ao CBAB, reflexões sobre leitura e finanças e ritual Plot Friday |
 
 ## Recurring topics
 
