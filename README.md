@@ -23,6 +23,7 @@ In modern terms: capture via Telegram, archive locally, transcribe with Whisper 
 | Letters, journals, telegrams | Typed Telegram notes → `transcripts/typed_notes_*.txt` |
 | Mina's assembled manuscript | The `transcripts/` folder — the compiled readable record |
 | Van Helsing's dossier | Daily Markdown notes in `dossier/` via [van_helsings_dossier](van_helsings_dossier/) |
+| Rainfields Mind | Weekly curated synthesis in `rainfields_mind/` — tagged synthesis from the dossier |
 
 ## The circle
 
@@ -49,6 +50,7 @@ flowchart LR
     VA[(voice_archive/*.ogg)]
     TR[(transcripts/*.txt)]
     DO[(dossier/*.md)]
+    RM[(rainfields_mind/weekly/*.md)]
   end
 
   subgraph transcribe["Transcribe and compile (manual or scheduled)"]
@@ -63,6 +65,7 @@ flowchart LR
   MT -->|Whisper output| TR
   TR --> VD
   VD -->|daily Markdown| DO
+  DO -.->|manual or future route| RM
   AR -.->|optional: bot + interval| SP
   AR -.->|optional: interval| MT
   AR -.->|optional: interval| VD
@@ -73,7 +76,8 @@ flowchart LR
 | Capture voice | Seward's Phonograph | Automatic while the bot runs |
 | Capture text | Seward's Phonograph | Automatic while the bot runs |
 | Transcribe voice | Mina's Typewriter | Manual — run CLI or Streamlit when ready |
-| Compile journal | Van Helsing's Dossier | Manual — run CLI when ready; or automatic via `helsings_round.py` |
+| Compile dossier | Van Helsing's Dossier | Manual — run CLI when ready; or automatic via `helsings_round.py` |
+| Rainfields Mind | `rainfields_mind/` | Manual — LLM or by hand; see [Rainfields Mind](#rainfields-mind) |
 | Run everything | `helsings_round.py` | Bot always on + transcribe every N minutes + dossier compile/delivery (see `TRANSCRIBE_INTERVAL_MINUTES`, `DOSSIER_INTERVAL_MINUTES`) |
 
 Typed notes land in `transcripts/` immediately. Voice files wait in `voice_archive/` until you run Mina's Typewriter (or `helsings_round.py` on its schedule).
@@ -85,6 +89,12 @@ harkers_archive/
 ├── voice_archive/       # raw audio (.ogg from Telegram) — gitignored
 ├── transcripts/         # typed notes + Whisper .txt output — gitignored
 ├── dossier/             # compiled daily Markdown notes — gitignored
+├── rainfields_mind/     # weekly curated synthesis (Rainfields Mind) — tracked in git
+│   ├── README.md
+│   ├── TAGGING_SYSTEM.md
+│   ├── WEEKLY_JOURNAL_INSTRUCTIONS.md
+│   ├── index.md
+│   └── weekly/          # one file per ISO week, e.g. 2026-W22.md
 ├── sewards_phonograph/  # Telegram capture bot
 ├── mina_typewriter/     # Whisper transcription
 ├── van_helsings_dossier/ # transcript compiler → daily Markdown
@@ -103,8 +113,68 @@ harkers_archive/
 | Typed note (daily file) | `typed_notes_{YYYYMMDD}_{user_id}.txt` | `typed_notes_20260524_123456789.txt` |
 | Whisper transcript | `{basename}.txt` + `{basename}_segments.txt` | `20260524_151230_123456789.txt` |
 | Dossier (daily journal) | `{YYYY-MM-DD}.md` | `2026-06-02.md` |
+| Rainfields Mind weekly note | `weekly/{YYYY-WNN}.md` | `weekly/2026-W22.md` |
 
 Each typed note is appended with a timestamp: `[20260524_151230] Your message here.`
+
+## Rainfields Mind
+
+The `rainfields_mind/` folder is a **curated synthesis layer** on top of the generated daily dossier. It does not replace capture, transcription, or `van_helsings_dossier` — and nothing in the current Python pipeline writes to it yet.
+
+| Path | Role |
+|------|------|
+| [rainfields_mind/README.md](rainfields_mind/README.md) | Overview and folder layout |
+| [rainfields_mind/TAGGING_SYSTEM.md](rainfields_mind/TAGGING_SYSTEM.md) | Controlled tags, transcription normalization, when to add new tags |
+| [rainfields_mind/WEEKLY_JOURNAL_INSTRUCTIONS.md](rainfields_mind/WEEKLY_JOURNAL_INSTRUCTIONS.md) | Model-agnostic workflow (any LLM can follow this file) |
+| [rainfields_mind/index.md](rainfields_mind/index.md) | Index of completed weeks |
+| [rainfields_mind/weekly/YYYY-WNN.md](rainfields_mind/weekly/) | One weekly final note per ISO week (Mon–Sun, `America/Fortaleza`) |
+
+**Do not hand-edit `dossier/*.md`** — the compiler overwrites them. Weekly notes live only under `rainfields_mind/weekly/`.
+
+### Weekly ritual (manual, today)
+
+Run this once per week (typically Sunday evening or Monday morning, after the ISO week has ended):
+
+1. **Ensure dossiers are current** — same as step 6 in the tutorial:
+   ```bash
+   cd van_helsings_dossier && uv run python compile.py
+   ```
+2. **Pick the ISO week** that just ended (e.g. `2026-W26` = Mon 2026-06-23 … Sun 2026-06-29).
+3. **List dossier files** for that week (only files that exist):
+   ```bash
+   # Replace dates with your week's Mon..Sun
+   for d in 2026-06-22 2026-06-23 2026-06-24 2026-06-25 2026-06-26 2026-06-27 2026-06-28; do
+     [ -f "dossier/${d}.md" ] && echo "dossier/${d}.md"
+   done
+   ```
+4. **Send one prompt** to your LLM with exactly these attachments:
+   - `@rainfields_mind/WEEKLY_JOURNAL_INSTRUCTIONS.md`
+   - `@rainfields_mind/TAGGING_SYSTEM.md`
+   - `@rainfields_mind/weekly/YYYY-W(N-1).md` — last week's note (skip if none)
+   - `@dossier/YYYY-MM-DD.md` — **every dossier file** from step 3
+5. **Use the prompt template** in [rainfields_mind/WEEKLY_JOURNAL_INSTRUCTIONS.md § What to put in your prompt each week](rainfields_mind/WEEKLY_JOURNAL_INSTRUCTIONS.md#what-to-put-in-your-prompt-each-week) (fill in week id, date range, and dossier list).
+6. **Save** the model output to `rainfields_mind/weekly/YYYY-WNN.md`.
+7. **Update** [rainfields_mind/index.md](rainfields_mind/index.md) with the one-line summary the model gives you.
+8. **Optional** — if you promoted new tags, append them to [rainfields_mind/TAGGING_SYSTEM.md](rainfields_mind/TAGGING_SYSTEM.md).
+
+Full checklist, copy-paste prompt, and worked example: [rainfields_mind/WEEKLY_JOURNAL_INSTRUCTIONS.md](rainfields_mind/WEEKLY_JOURNAL_INSTRUCTIONS.md#what-to-put-in-your-prompt-each-week).
+
+Weekly notes are primarily in **Portuguese**; keep **English** for reading logs, Cambly notes, and book quotes when the original wording matters.
+
+### Future automation hook
+
+There is **no scheduled route yet** — `helsings_round.py` does not call the Rainfields Mind layer. To add one later (CLI, cron, Telegram command, or new sub-package), a minimal contract would be:
+
+| | |
+|--|--|
+| **Trigger** | End of ISO week, or on demand (`--week 2026-W26`) |
+| **Read** | `dossier/YYYY-MM-DD.md` for each day in the week; `rainfields_mind/weekly/YYYY-W(N-1).md`; `rainfields_mind/WEEKLY_JOURNAL_INSTRUCTIONS.md`; `rainfields_mind/TAGGING_SYSTEM.md` |
+| **Write** | `rainfields_mind/weekly/YYYY-WNN.md`; append row to `rainfields_mind/index.md` |
+| **Do not modify** | `dossier/`, `transcripts/`, `voice_archive/`, existing sub-projects |
+| **Week boundaries** | ISO week, Monday–Sunday, timezone `America/Fortaleza` |
+| **Provenance** | Preserve `entry_id` from dossier entries in the `Índice de fontes` table |
+
+A future module could live at repo root (e.g. `rainfields_mind/compile_week.py`) or as a new workspace member — same pattern as `van_helsings_dossier`: read-only on upstream data, write-only on `rainfields_mind/`. Point the implementation at `WEEKLY_JOURNAL_INSTRUCTIONS.md` as the spec; no Cursor-specific APIs required.
 
 ## Prerequisites
 
@@ -197,7 +267,11 @@ uv run python compile.py
 
 Output lands in `dossier/` (one file per day, e.g. `2026-06-02.md`). Re-run after new transcripts arrive — only changed days are rebuilt. See [van_helsings_dossier/README.md](van_helsings_dossier/README.md) for format details.
 
-### 7. Run everything (`helsings_round.py`)
+### 7. Rainfields Mind
+
+After dossiers exist for a full ISO week, synthesize the weekly note — see [Rainfields Mind](#rainfields-mind). This step is manual today (LLM or by hand); it is not part of `helsings_round.py`.
+
+### 8. Run everything (`helsings_round.py`)
 
 To keep the phonograph running and transcribe on a schedule (default every 8 hours), from the **repo root**:
 
@@ -252,6 +326,7 @@ Each module has its own README with artwork, troubleshooting, and reference docs
 - **[Dr. Seward's Phonograph](sewards_phonograph/README.md)** — commands, filename rules, background running, manual test plan
 - **[Mina's Typewriter](mina_typewriter/README.md)** — Whisper models, transcription options, Streamlit UI, CPU/GPU notes
 - **[Van Helsing's Dossier](van_helsings_dossier/README.md)** — compile transcripts into Obsidian daily Markdown notes
+- **[Rainfields Mind](rainfields_mind/README.md)** — weekly synthesis from dossiers; tagging and LLM instructions
 
 ## The work continues
 
@@ -266,12 +341,13 @@ This archive is deliberately incomplete — a working manuscript, not a closed b
 | Index / search across transcripts | Find passages across the compiled record |
 | Automatic transcription on capture | Phonograph → typewriter without a manual step | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
 | Daily dossier compile and delivery | Transcripts → Obsidian Markdown + Telegram | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
+| Rainfields Mind | Dossier → tagged weekly synthesis in `rainfields_mind/weekly/` | **Partial** — instructions and sample weeks in [`rainfields_mind/`](rainfields_mind/); no automated route yet |
 | Summaries or cross-references | Collate related entries across days and sources |
 | Further witnesses | New capture or processing modules under the same record base |
 
 ### Adding a module
 
-Add a new top-level folder with its own `pyproject.toml`, then register it under `[tool.uv.workspace] members` in the root [pyproject.toml](pyproject.toml). Shared data stays in `voice_archive/`, `transcripts/`, and `dossier/`.
+Add a new top-level folder with its own `pyproject.toml`, then register it under `[tool.uv.workspace] members` in the root [pyproject.toml](pyproject.toml). Shared data stays in `voice_archive/`, `transcripts/`, and `dossier/`. The Rainfields Mind synthesis layer lives in `rainfields_mind/` and is safe to extend without touching the capture pipeline.
 
 ## License
 
