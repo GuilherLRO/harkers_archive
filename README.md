@@ -101,10 +101,7 @@ harkers_archive/
 ├── helsings_round.py       # optional: bot + scheduled transcribe coordinator
 ├── helsings_roundctl.sh    # start / stop / restart / status / logs / logs-http
 ├── Dockerfile              # container image for helsings_round.py
-├── docker-compose.yml      # long-running coordinator with bind-mounted data (same machine)
-├── docker-compose.sync.yml # main machine: Syncthing only (pairs with remote)
-├── docker-compose.remote.yml # remote machine: Syncthing + helsings_round
-├── docs/DOCKER_REMOTE.md   # pair main ↔ remote and sync archive folders
+├── docker-compose.yml      # Syncthing + optional helsings_round (profile: runner)
 ├── archive_logging.py      # splits Telegram HTTP traffic into a separate log file
 ├── .env                 # shared config (gitignored; copy from .env.example)
 └── uv.lock              # shared workspace lockfile
@@ -315,74 +312,72 @@ Background runs write two log files at the repo root (both gitignored): `helsing
 
 ### 9. Docker
 
-Three compose files for different setups:
+One [`docker-compose.yml`](docker-compose.yml): **Syncthing** (always) + **helsings_round** (optional, via profile `runner`).
 
-| File | Use when |
-|------|----------|
-| [`docker-compose.yml`](docker-compose.yml) | Run on **this machine**; data in local folders |
-| [`docker-compose.sync.yml`](docker-compose.sync.yml) | **Main Mac** — Syncthing only; mirrors data to a remote runner |
-| [`docker-compose.remote.yml`](docker-compose.remote.yml) | **New machine** — Syncthing + `helsings_round`; syncs with main |
-
-**Same machine** — run the full coordinator in a container with data and logs on your host:
-
-**Setup** (once):
+**Setup** (once per machine):
 
 ```bash
-cp .env.example .env   # if you have not already
+cp .env.example .env
 # Edit .env — TELEGRAM_BOT_TOKEN, OPENAI_API_KEY (if Rainfields enabled), etc.
-docker compose build
+docker compose up -d
 ```
 
-**Start / stop:**
+| Machine | `.env` | What starts |
+|---------|--------|-------------|
+| **Main Mac** (sync only) | default | Syncthing |
+| **Remote** (run the bot) | add `COMPOSE_PROFILES=runner` | Syncthing + helsings_round |
+
+Remote also needs a first build:
 
 ```bash
-docker compose up -d          # background; restart: unless-stopped
-docker compose logs -f        # coordinator + bot activity (stdout/stderr)
-docker compose stop           # graceful SIGTERM
-docker compose down           # stop and remove container (keeps volumes)
+docker compose up -d --build
 ```
 
-**Remote machine + sync with main Mac**
-
-Clone the repo on the second computer, copy `.env` securely (not via Syncthing), then follow **[docs/DOCKER_REMOTE.md](docs/DOCKER_REMOTE.md)**:
+**Commands:**
 
 ```bash
-# Main Mac — share archive folders
-docker compose -f docker-compose.sync.yml up -d
-
-# Remote — run bot + receive synced data
-docker compose -f docker-compose.remote.yml up -d --build
+docker compose up -d              # start
+docker compose logs -f            # all services
+docker compose logs -f helsings-round
+docker compose stop               # graceful stop
+docker compose down               # remove containers (keeps volumes)
 ```
 
-Pair both Syncthing UIs (port 8384), share `voice_archive`, `transcripts`, `dossier`, `logs`, and `rainfields_mind/weekly`. **Stop `helsings_round` on main** if the remote runs the Telegram bot — one token, one poller.
+**Sync with main Mac**
 
-Python dependencies are installed **inside the image** at build time (`uv sync`). Archive **data** syncs over the network via Syncthing, not git.
+1. Run `docker compose up -d` on **both** machines (remote with `COMPOSE_PROFILES=runner`).
+2. Copy `.env` to the remote securely — **not** via Syncthing.
+3. Open Syncthing at **http://localhost:8384** on each machine; pair devices and share folders:
+   `voice_archive`, `transcripts`, `dossier`, `logs`, `rainfields_mind/weekly` (paths under `/data/…` in the Syncthing UI).
+4. **Stop `helsings_round` on main** (`./helsings_roundctl.sh stop`) if the remote runs the bot — one Telegram token, one poller.
 
-**What syncs with the host**
+Use [Tailscale](https://tailscale.com/) on both machines so Syncthing can reach port `22000` without exposing it publicly.
 
-| Host path | In container | Purpose |
-|-----------|--------------|---------|
-| `voice_archive/` | `/app/voice_archive` | Raw voice files |
-| `transcripts/` | `/app/transcripts` | Typed notes + Whisper output |
-| `dossier/` | `/app/dossier` | Compiled daily Markdown |
-| `rainfields_mind/` | `/app/rainfields_mind` | Weekly synthesis + agent inputs |
-| `logs/` | `/app/logs` | Telegram HTTP log (`helsings_round_http.log`) |
+Python dependencies are installed **inside the image** at build time. Archive **data** syncs via Syncthing, not git.
 
-Whisper model weights are cached in a Docker named volume (`whisper-cache`) so rebuilds do not re-download every time.
+**Bind mounts**
 
-**Is this safe?**
+| Host path | Purpose |
+|-----------|---------|
+| `voice_archive/` | Raw voice files |
+| `transcripts/` | Typed notes + Whisper output |
+| `dossier/` | Compiled daily Markdown |
+| `rainfields_mind/` | Weekly synthesis (runner only; Syncthing syncs `weekly/`) |
+| `logs/` | Telegram HTTP log (`helsings_round_http.log`) |
 
-| Practice | Why |
-|----------|-----|
-| **Secrets only in `.env`** | `.env` is gitignored. `docker-compose.yml` sets paths, not tokens. |
-| **Never commit `.env`** | Same rule as native runs — tokens stay on your machine. |
-| **One bot instance** | Do not run `helsings_roundctl.sh start` and `docker compose up` at the same time — one Telegram token, one poller. |
-| **Bind mounts, not copies** | Your archive data lives on the host; removing the container does not delete `voice_archive/` or `transcripts/`. |
-| **Outbound network only** | The container needs HTTPS to Telegram and (if enabled) your LLM provider; no inbound ports are exposed. |
+Whisper model weights cache in the `whisper-cache` Docker volume.
 
-Path overrides (`SAVE_DIR=/app/voice_archive`, etc.) are set in `docker-compose.yml` so your host `.env` can keep macOS paths for native runs. Docker overrides them inside the container.
+**Safety**
 
-First transcription inside Docker downloads Whisper weights and can take several minutes on CPU. Ensure the machine has enough RAM for the configured Whisper model (see [mina_typewriter/README.md](mina_typewriter/README.md)).
+| Do | Don't |
+|----|--------|
+| Secrets in gitignored `.env` only | Commit or Syncthing-sync `.env` |
+| One bot instance (main **or** remote) | Run `helsings_roundctl.sh` and Docker runner together |
+| Tailscale / private LAN for Syncthing | Expose port 8384 to the public internet |
+
+Path overrides (`SAVE_DIR=/app/…`) are set in `docker-compose.yml` so your host `.env` can keep macOS paths for native runs.
+
+First transcription downloads Whisper weights and can take several minutes on CPU — see [mina_typewriter/README.md](mina_typewriter/README.md) for RAM requirements.
 
 ## Testing
 
