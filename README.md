@@ -100,6 +100,8 @@ harkers_archive/
 ├── van_helsings_dossier/ # transcript compiler → daily Markdown
 ├── helsings_round.py       # optional: bot + scheduled transcribe coordinator
 ├── helsings_roundctl.sh    # start / stop / restart / status / logs / logs-http
+├── Dockerfile              # container image for helsings_round.py
+├── docker-compose.yml      # long-running coordinator with bind-mounted data
 ├── archive_logging.py      # splits Telegram HTTP traffic into a separate log file
 ├── .env                 # shared config (gitignored; copy from .env.example)
 └── uv.lock              # shared workspace lockfile
@@ -189,6 +191,7 @@ See [rainfields_mind/README.md](rainfields_mind/README.md) for CLI flags, env va
 | **ffmpeg** (`brew install ffmpeg`) | Mina's Typewriter |
 | **Telegram bot token** ([@BotFather](https://t.me/BotFather)) | Seward's Phonograph |
 | **OpenAI API key** | Rainfields Mind agent (`compile_week.py`) |
+| **Docker + Compose** (optional) | Run `helsings_round.py` in a container — see [Docker](#docker) |
 
 ## Tutorial
 
@@ -306,6 +309,53 @@ On every start or restart, archive users receive a short Telegram message confir
 This script only calls the existing sub-projects via subprocess — it does not replace manual steps 4–6. Only one instance should run at a time.
 
 Background runs write two log files at the repo root (both gitignored): `helsings_round.log` for coordinator and bot activity, and `helsings_round_http.log` for frequent Telegram HTTP polling (`httpx`). Use `logs` and `logs-http` with the ctl script to tail each file.
+
+### 9. Docker
+
+Run the full coordinator in a container with data and logs on your host machine.
+
+**Setup** (once):
+
+```bash
+cp .env.example .env   # if you have not already
+# Edit .env — TELEGRAM_BOT_TOKEN, OPENAI_API_KEY (if Rainfields enabled), etc.
+docker compose build
+```
+
+**Start / stop:**
+
+```bash
+docker compose up -d          # background; restart: unless-stopped
+docker compose logs -f        # coordinator + bot activity (stdout/stderr)
+docker compose stop           # graceful SIGTERM
+docker compose down           # stop and remove container (keeps volumes)
+```
+
+**What syncs with the host**
+
+| Host path | In container | Purpose |
+|-----------|--------------|---------|
+| `voice_archive/` | `/app/voice_archive` | Raw voice files |
+| `transcripts/` | `/app/transcripts` | Typed notes + Whisper output |
+| `dossier/` | `/app/dossier` | Compiled daily Markdown |
+| `rainfields_mind/` | `/app/rainfields_mind` | Weekly synthesis + agent inputs |
+| `logs/` | `/app/logs` | Telegram HTTP log (`helsings_round_http.log`) |
+
+Whisper model weights are cached in a Docker named volume (`whisper-cache`) so rebuilds do not re-download every time.
+
+**Is this safe?**
+
+| Practice | Why |
+|----------|-----|
+| **Secrets only in `.env`** | `.env` is gitignored. `docker-compose.yml` sets paths, not tokens. |
+| **Never commit `.env`** | Same rule as native runs — tokens stay on your machine. |
+| **One bot instance** | Do not run `helsings_roundctl.sh start` and `docker compose up` at the same time — one Telegram token, one poller. |
+| **Bind mounts, not copies** | Your archive data lives on the host; removing the container does not delete `voice_archive/` or `transcripts/`. |
+| **Outbound network only** | The container needs HTTPS to Telegram and (if enabled) your LLM provider; no inbound ports are exposed. |
+
+Path overrides (`SAVE_DIR=/app/voice_archive`, etc.) are set in `docker-compose.yml` so your host `.env` can keep macOS paths for native runs. Docker overrides them inside the container.
+
+First transcription inside Docker downloads Whisper weights and can take several minutes on CPU. Ensure the machine has enough RAM for the configured Whisper model (see [mina_typewriter/README.md](mina_typewriter/README.md)).
 
 ## Testing
 

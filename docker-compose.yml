@@ -1,0 +1,34 @@
+# Harker's Archive — long-running coordinator (helsings_round.py).
+#
+# Secrets: copy .env.example → .env and fill in tokens. Never commit .env.
+# Path overrides below use /app/... inside the container; host data is bind-mounted.
+
+services:
+  helsings-round:
+    build: .
+    container_name: harkers-archive
+    restart: unless-stopped
+    init: true
+    env_file:
+      - path: .env
+        required: true
+    environment:
+      SAVE_DIR: /app/voice_archive
+      TRANSCRIPTS_DIR: /app/transcripts
+      HARKERS_INPUT_DIR: /app/voice_archive
+      HARKERS_OUTPUT_DIR: /app/transcripts
+      HARKERS_TRANSCRIPTS_DIR: /app/transcripts
+      HARKERS_DOSSIER_DIR: /app/dossier
+      HARKERS_RAINFIELDS_DIR: /app/rainfields_mind
+      HELSINGS_HTTP_LOG: /app/logs/helsings_round_http.log
+    volumes:
+      - ./voice_archive:/app/voice_archive
+      - ./transcripts:/app/transcripts
+      - ./dossier:/app/dossier
+      - ./rainfields_mind:/app/rainfields_mind
+      - ./logs:/app/logs
+      - whisper-cache:/root/.cache/whisper
+    # Coordinator stdout/stderr: docker compose logs -f
+
+volumes:
+  whisper-cache:

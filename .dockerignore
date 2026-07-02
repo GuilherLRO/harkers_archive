@@ -1,0 +1,36 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# Python / tooling
+.venv/
+**/.venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+**/.pytest_cache/
+*.py[cod]
+.helsings_round.pid
+
+# Git
+.git/
+.gitignore
+
+# Local record base (bind-mounted at runtime)
+voice_archive/
+transcripts/
+dossier/
+logs/
+
+# Logs at repo root (native runs)
+helsings_round.log
+helsings_round_http.log
+
+# Agent run artifacts (recreated in container or on host)
+rainfields_mind/agent/runs/
+rainfields_mind/agent/.rainfields_mind_manifest.json
+
+# OS / editor
+.DS_Store
+.cursor/

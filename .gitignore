@@ -7,6 +7,8 @@ __pycache__/
 .helsings_round.pid
 helsings_round.log
 helsings_round_http.log
+logs/*
+!logs/.gitkeep
 
 # Record base (local data)
 voice_archive/*
