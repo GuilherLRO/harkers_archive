@@ -101,7 +101,10 @@ harkers_archive/
 ├── helsings_round.py       # optional: bot + scheduled transcribe coordinator
 ├── helsings_roundctl.sh    # start / stop / restart / status / logs / logs-http
 ├── Dockerfile              # container image for helsings_round.py
-├── docker-compose.yml      # long-running coordinator with bind-mounted data
+├── docker-compose.yml      # long-running coordinator with bind-mounted data (same machine)
+├── docker-compose.sync.yml # main machine: Syncthing only (pairs with remote)
+├── docker-compose.remote.yml # remote machine: Syncthing + helsings_round
+├── docs/DOCKER_REMOTE.md   # pair main ↔ remote and sync archive folders
 ├── archive_logging.py      # splits Telegram HTTP traffic into a separate log file
 ├── .env                 # shared config (gitignored; copy from .env.example)
 └── uv.lock              # shared workspace lockfile
@@ -312,7 +315,15 @@ Background runs write two log files at the repo root (both gitignored): `helsing
 
 ### 9. Docker
 
-Run the full coordinator in a container with data and logs on your host machine.
+Three compose files for different setups:
+
+| File | Use when |
+|------|----------|
+| [`docker-compose.yml`](docker-compose.yml) | Run on **this machine**; data in local folders |
+| [`docker-compose.sync.yml`](docker-compose.sync.yml) | **Main Mac** — Syncthing only; mirrors data to a remote runner |
+| [`docker-compose.remote.yml`](docker-compose.remote.yml) | **New machine** — Syncthing + `helsings_round`; syncs with main |
+
+**Same machine** — run the full coordinator in a container with data and logs on your host:
 
 **Setup** (once):
 
@@ -330,6 +341,22 @@ docker compose logs -f        # coordinator + bot activity (stdout/stderr)
 docker compose stop           # graceful SIGTERM
 docker compose down           # stop and remove container (keeps volumes)
 ```
+
+**Remote machine + sync with main Mac**
+
+Clone the repo on the second computer, copy `.env` securely (not via Syncthing), then follow **[docs/DOCKER_REMOTE.md](docs/DOCKER_REMOTE.md)**:
+
+```bash
+# Main Mac — share archive folders
+docker compose -f docker-compose.sync.yml up -d
+
+# Remote — run bot + receive synced data
+docker compose -f docker-compose.remote.yml up -d --build
+```
+
+Pair both Syncthing UIs (port 8384), share `voice_archive`, `transcripts`, `dossier`, `logs`, and `rainfields_mind/weekly`. **Stop `helsings_round` on main** if the remote runs the Telegram bot — one token, one poller.
+
+Python dependencies are installed **inside the image** at build time (`uv sync`). Archive **data** syncs over the network via Syncthing, not git.
 
 **What syncs with the host**
 
