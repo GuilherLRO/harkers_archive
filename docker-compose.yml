@@ -1,46 +1,19 @@
-# Harker's Archive — Syncthing + optional helsings_round coordinator.
+# Harker's Archive — helsings_round on a VPS (or any host).
 #
-# Setup: cp .env.example .env (secrets never committed)
-#
-# Main Mac (sync data only):
-#   docker compose up -d
-#
-# Remote machine (run bot + sync with main):
-#   Add COMPOSE_PROFILES=runner to .env
+# Setup:
+#   cp .env.example .env   # TELEGRAM_BOT_TOKEN, etc. — never commit .env
+#   mkdir -p voice_archive transcripts dossier logs rainfields_mind/weekly
 #   docker compose up -d --build
-#   Stop helsings_round on main first — one Telegram token, one poller.
 #
-# Pair Syncthing at http://localhost:8384 on each machine (see README § Docker).
+# Archive folders are bind-mounted to ./ on the host (outside the container).
+# Stop any other helsings_round / bot.py using the same Telegram token first.
 
 services:
-  syncthing:
-    image: syncthing/syncthing:2
-    container_name: harkers-syncthing
-    restart: unless-stopped
-    hostname: ${SYNCTHING_HOSTNAME:-harkers-archive}
-    environment:
-      STGUIADDRESS: 0.0.0.0:8384
-    volumes:
-      - syncthing-config:/var/syncthing/config
-      - ./voice_archive:/data/voice_archive
-      - ./transcripts:/data/transcripts
-      - ./dossier:/data/dossier
-      - ./logs:/data/logs
-      - ./rainfields_mind/weekly:/data/rainfields_mind/weekly
-    ports:
-      - "${SYNCTHING_GUI_PORT:-8384}:8384"
-      - "${SYNCTHING_SYNC_PORT:-22000}:22000/tcp"
-      - "${SYNCTHING_SYNC_PORT:-22000}:22000/udp"
-
   helsings-round:
-    profiles: [runner]
     build: .
     container_name: harkers-archive
     restart: unless-stopped
     init: true
-    depends_on:
-      syncthing:
-        condition: service_started
     env_file:
       - path: .env
         required: true
@@ -62,5 +35,4 @@ services:
       - whisper-cache:/root/.cache/whisper
 
 volumes:
-  syncthing-config:
   whisper-cache:

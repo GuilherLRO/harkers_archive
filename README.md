@@ -101,7 +101,7 @@ harkers_archive/
 ├── helsings_round.py       # optional: bot + scheduled transcribe coordinator
 ├── helsings_roundctl.sh    # start / stop / restart / status / logs / logs-http
 ├── Dockerfile              # container image for helsings_round.py
-├── docker-compose.yml      # Syncthing + optional helsings_round (profile: runner)
+├── docker-compose.yml      # VPS / Docker: helsings_round + bind-mounted archive folders
 ├── archive_logging.py      # splits Telegram HTTP traffic into a separate log file
 ├── .env                 # shared config (gitignored; copy from .env.example)
 └── uv.lock              # shared workspace lockfile
@@ -191,7 +191,7 @@ See [rainfields_mind/README.md](rainfields_mind/README.md) for CLI flags, env va
 | **ffmpeg** (`brew install ffmpeg`) | Mina's Typewriter |
 | **Telegram bot token** ([@BotFather](https://t.me/BotFather)) | Seward's Phonograph |
 | **OpenAI API key** | Rainfields Mind agent (`compile_week.py`) |
-| **Docker + Compose** (optional) | Run `helsings_round.py` in a container — see [Docker](#docker) |
+| **Docker + Compose** (optional) | Run on a VPS — see [Docker (VPS)](#9-docker-vps) |
 
 ## Tutorial
 
@@ -310,70 +310,48 @@ This script only calls the existing sub-projects via subprocess — it does not 
 
 Background runs write two log files at the repo root (both gitignored): `helsings_round.log` for coordinator and bot activity, and `helsings_round_http.log` for frequent Telegram HTTP polling (`httpx`). Use `logs` and `logs-http` with the ctl script to tail each file.
 
-### 9. Docker
+### 9. Docker (VPS)
 
-One [`docker-compose.yml`](docker-compose.yml): **Syncthing** (always) + **helsings_round** (optional, via profile `runner`).
+Run [`helsings_round.py`](helsings_round.py) in a container on a VPS. Archive data lives in **host folders** next to the repo (bind mounts) — you can `ssh` in and read `voice_archive/`, `transcripts/`, etc. directly.
 
-**Setup** (once per machine):
+**Setup** (once on the VPS):
 
 ```bash
+git clone https://github.com/GuilherLRO/harkers_archive.git
+cd harkers_archive
 cp .env.example .env
-# Edit .env — TELEGRAM_BOT_TOKEN, OPENAI_API_KEY (if Rainfields enabled), etc.
-docker compose up -d
-```
-
-| Machine | `.env` | What starts |
-|---------|--------|-------------|
-| **Main Mac** (sync only) | default | Syncthing |
-| **Remote** (run the bot) | add `COMPOSE_PROFILES=runner` | Syncthing + helsings_round |
-
-Remote also needs a first build:
-
-```bash
+# Edit .env — TELEGRAM_BOT_TOKEN, OPENAI_API_KEY (if Rainfields enabled)
+mkdir -p voice_archive transcripts dossier logs rainfields_mind/weekly
 docker compose up -d --build
 ```
 
 **Commands:**
 
 ```bash
-docker compose up -d              # start
-docker compose logs -f            # all services
-docker compose logs -f helsings-round
-docker compose stop               # graceful stop
-docker compose down               # remove containers (keeps volumes)
+docker compose logs -f
+docker compose restart
+docker compose stop
+docker compose down              # keeps host folders and whisper-cache volume
 ```
 
-**Sync with main Mac**
-
-1. Run `docker compose up -d` on **both** machines (remote with `COMPOSE_PROFILES=runner`).
-2. Copy `.env` to the remote securely — **not** via Syncthing.
-3. Open Syncthing at **http://localhost:8384** on each machine; pair devices and share folders:
-   `voice_archive`, `transcripts`, `dossier`, `logs`, `rainfields_mind/weekly` (paths under `/data/…` in the Syncthing UI).
-4. **Stop `helsings_round` on main** (`./helsings_roundctl.sh stop`) if the remote runs the bot — one Telegram token, one poller.
-
-Use [Tailscale](https://tailscale.com/) on both machines so Syncthing can reach port `22000` without exposing it publicly.
-
-Python dependencies are installed **inside the image** at build time. Archive **data** syncs via Syncthing, not git.
-
-**Bind mounts**
+**Host folders** (same paths inside the container at `/app/…`):
 
 | Host path | Purpose |
 |-----------|---------|
-| `voice_archive/` | Raw voice files |
+| `voice_archive/` | Raw voice files from Telegram |
 | `transcripts/` | Typed notes + Whisper output |
 | `dossier/` | Compiled daily Markdown |
-| `rainfields_mind/` | Weekly synthesis (runner only; Syncthing syncs `weekly/`) |
+| `rainfields_mind/` | Weekly synthesis + agent inputs |
 | `logs/` | Telegram HTTP log (`helsings_round_http.log`) |
 
-Whisper model weights cache in the `whisper-cache` Docker volume.
+Coordinator activity goes to `docker compose logs`. Whisper model weights stay in the `whisper-cache` Docker volume (not on the host).
 
-**Safety**
+**Notes**
 
-| Do | Don't |
-|----|--------|
-| Secrets in gitignored `.env` only | Commit or Syncthing-sync `.env` |
-| One bot instance (main **or** remote) | Run `helsings_roundctl.sh` and Docker runner together |
-| Tailscale / private LAN for Syncthing | Expose port 8384 to the public internet |
+- Stop any other bot using the same Telegram token (Mac `helsings_roundctl`, etc.) before starting on the VPS.
+- Secrets stay in gitignored `.env` only — not in the image or compose file.
+- No inbound ports are exposed; the bot polls Telegram outbound.
+- After `uv.lock` changes: `git pull && docker compose up -d --build`.
 
 Path overrides (`SAVE_DIR=/app/…`) are set in `docker-compose.yml` so your host `.env` can keep macOS paths for native runs.
 
