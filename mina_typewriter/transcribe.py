@@ -1,4 +1,4 @@
-"""Batch-transcribe audio and video files in a folder using OpenAI Whisper."""
+"""Batch-transcribe audio and video files in a folder using the OpenAI Audio API."""
 
 from __future__ import annotations
 
@@ -7,9 +7,8 @@ import os
 import time
 from pathlib import Path
 
-import whisper
 from dotenv import load_dotenv
-from whisper.utils import format_timestamp
+from openai import APIConnectionError, APIStatusError, OpenAI, RateLimitError
 
 # --- Configuration (edit before running) ---
 
@@ -21,14 +20,21 @@ INPUT_DIR = Path(
 OUTPUT_DIR = Path(
     os.environ.get("HARKERS_OUTPUT_DIR", _ARCHIVE_ROOT / "transcripts")
 )
-MODEL_NAME = "large"
+MODEL_NAME = os.environ.get("MINA_TRANSCRIBE_MODEL", "whisper-1").strip() or "whisper-1"
 SUPPORTED_EXTENSIONS = (".mp4", ".m4a", ".wav", ".ogg", ".WAV")
+SEGMENT_MODELS = frozenset({"whisper-1"})
+MAX_RETRIES = 2
+RETRY_BACKOFF_SECONDS = 2.0
 
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+
+class ConfigurationError(Exception):
+    pass
 
 
 def _format_bytes(size: int) -> str:
@@ -46,11 +52,20 @@ def _format_seconds(seconds: float) -> str:
     return f"{minutes}m {remainder}s"
 
 
-def _audio_duration(result: dict) -> float:
-    segments = result.get("segments") or []
+def format_timestamp(seconds: float) -> str:
+    """Format seconds as MM:SS.mmm (matches van_helsings_dossier segment parser)."""
+    millis = int(round(max(0.0, seconds) * 1000))
+    minutes, millis = divmod(millis, 60_000)
+    seconds_part, millis_part = divmod(millis, 1000)
+    return f"{minutes:02d}:{seconds_part:02d}.{millis_part:03d}"
+
+
+def _audio_duration(segments: list) -> float:
     if not segments:
         return 0.0
-    return float(segments[-1]["end"])
+    last = segments[-1]
+    end = last.get("end") if isinstance(last, dict) else getattr(last, "end", 0.0)
+    return float(end)
 
 
 def _progress_label(index: int | None, total: int | None) -> str:
@@ -59,23 +74,92 @@ def _progress_label(index: int | None, total: int | None) -> str:
     return ""
 
 
-def save_segments_txt(result: dict, output_path: Path) -> None:
+def _segment_fields(segment) -> tuple[float, float, str]:
+    if isinstance(segment, dict):
+        return float(segment["start"]), float(segment["end"]), str(segment["text"]).strip()
+    return float(segment.start), float(segment.end), str(segment.text).strip()
+
+
+def supports_segments(model: str) -> bool:
+    return model in SEGMENT_MODELS
+
+
+def create_client() -> OpenAI:
+    api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    if not api_key:
+        raise ConfigurationError(
+            "OPENAI_API_KEY is required for Mina's Typewriter. "
+            "Set it in the repo root .env file."
+        )
+    base_url = os.environ.get("OPENAI_API_BASE", "").strip()
+    if base_url:
+        return OpenAI(api_key=api_key, base_url=base_url)
+    return OpenAI(api_key=api_key)
+
+
+def save_segments_txt(segments: list, output_path: Path) -> None:
     """Write timestamped segments in Whisper's verbose console format."""
     with output_path.open("w", encoding="utf-8") as file:
-        for segment in result["segments"]:
-            start = format_timestamp(segment["start"])
-            end = format_timestamp(segment["end"])
-            text = segment["text"].strip()
-            if text:
-                file.write(f"[{start} --> {end}] {text}\n")
+        for segment in segments:
+            start_s, end_s, text = _segment_fields(segment)
+            if not text:
+                continue
+            start = format_timestamp(start_s)
+            end = format_timestamp(end_s)
+            file.write(f"[{start} --> {end}] {text}\n")
+
+
+def transcribe_with_retries(
+    client: OpenAI,
+    source_path: Path,
+    *,
+    model: str,
+) -> object:
+    last_error: BaseException | None = None
+    for attempt in range(MAX_RETRIES + 1):
+        try:
+            with source_path.open("rb") as audio:
+                if supports_segments(model):
+                    return client.audio.transcriptions.create(
+                        model=model,
+                        file=audio,
+                        response_format="verbose_json",
+                        timestamp_granularities=["segment"],
+                    )
+                return client.audio.transcriptions.create(
+                    model=model,
+                    file=audio,
+                    response_format="json",
+                )
+        except (RateLimitError, APIConnectionError, APIStatusError) as exc:
+            last_error = exc
+            status = getattr(exc, "status_code", None)
+            retryable = isinstance(exc, (RateLimitError, APIConnectionError)) or (
+                isinstance(exc, APIStatusError) and status is not None and status >= 500
+            )
+            if not retryable or attempt >= MAX_RETRIES:
+                raise
+            delay = RETRY_BACKOFF_SECONDS * (attempt + 1)
+            logger.warning(
+                "Transcription API error for %s (attempt %d/%d): %s — retrying in %.1fs",
+                source_path.name,
+                attempt + 1,
+                MAX_RETRIES + 1,
+                exc,
+                delay,
+            )
+            time.sleep(delay)
+    assert last_error is not None
+    raise last_error
 
 
 def transcribe_file(
-    model: whisper.Whisper,
+    client: OpenAI,
     input_dir: Path,
     filename: str,
     output_dir: Path | None = None,
     *,
+    model: str = MODEL_NAME,
     index: int | None = None,
     total: int | None = None,
 ) -> None:
@@ -103,36 +187,42 @@ def transcribe_file(
         )
 
     started = time.perf_counter()
-    result = model.transcribe(
-        str(source_path),
-        word_timestamps=True,
-        fp16=False,
-        verbose=False,
-    )
+    result = transcribe_with_retries(client, source_path, model=model)
     elapsed = time.perf_counter() - started
 
     base = source_path.stem
     transcript_path = out / f"{base}.txt"
-    transcript_text = result["text"]
+    transcript_text = getattr(result, "text", "") or ""
     transcript_path.write_text(transcript_text, encoding="utf-8")
 
+    segments = getattr(result, "segments", None) or []
     segments_path = out / f"{base}_segments.txt"
-    segments = result.get("segments") or []
-    save_segments_txt(result, segments_path)
+    if segments:
+        save_segments_txt(segments, segments_path)
+    elif supports_segments(model):
+        segments_path.write_text("", encoding="utf-8")
+    else:
+        logger.warning(
+            "%sModel %s does not support segment timestamps — skipping %s",
+            prefix,
+            model,
+            segments_path.name,
+        )
 
-    language = result.get("language", "unknown")
+    language = getattr(result, "language", None) or "unknown"
     logger.info(
         "%sDone %s — language=%s, audio=%s, segments=%d, chars=%d, took=%s",
         prefix,
         filename,
         language,
-        _format_seconds(_audio_duration(result)),
+        _format_seconds(_audio_duration(segments)),
         len(segments),
         len(transcript_text),
         _format_seconds(elapsed),
     )
     logger.info("%sWrote %s", prefix, transcript_path)
-    logger.info("%sWrote %s", prefix, segments_path)
+    if segments or supports_segments(model):
+        logger.info("%sWrote %s", prefix, segments_path)
 
 
 def iter_media_files(input_dir: Path) -> list[str]:
@@ -170,10 +260,12 @@ def main() -> None:
         ", ".join(SUPPORTED_EXTENSIONS),
     )
 
-    logger.info("Loading Whisper model: %s", MODEL_NAME)
-    model_load_started = time.perf_counter()
-    model = whisper.load_model(MODEL_NAME)
-    logger.info("Model loaded in %s", _format_seconds(time.perf_counter() - model_load_started))
+    client = create_client()
+    if not supports_segments(MODEL_NAME):
+        logger.warning(
+            "Model %s does not support segment timestamps; only .txt files will be written",
+            MODEL_NAME,
+        )
 
     all_media = iter_media_files(INPUT_DIR)
     if not all_media:
@@ -203,10 +295,11 @@ def main() -> None:
     for index, filename in enumerate(files, start=1):
         try:
             transcribe_file(
-                model,
+                client,
                 INPUT_DIR,
                 filename,
                 OUTPUT_DIR,
+                model=MODEL_NAME,
                 index=index,
                 total=len(files),
             )

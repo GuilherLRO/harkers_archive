@@ -2,7 +2,7 @@
 
 ![Mina's Typewriter](assets/mina.png)
 
-Part of [Harker's Archive](../README.md). Batch-transcribe audio and video files using [OpenAI Whisper](https://github.com/openai/whisper). Run from the **CLI** (`transcribe.py`) to read `voice_archive/` and write to `transcripts/`, or use the **Streamlit app** (`app.py`) to pick custom input/output folders.
+Part of [Harker's Archive](../README.md). Batch-transcribe audio and video files using the [OpenAI Audio Transcriptions API](https://platform.openai.com/docs/guides/speech-to-text). Run from the **CLI** (`transcribe.py`) to read `voice_archive/` and write to `transcripts/`, or use the **Streamlit app** (`app.py`) to pick custom input/output folders.
 
 ## Prerequisites
 
@@ -10,19 +10,7 @@ Part of [Harker's Archive](../README.md). Batch-transcribe audio and video files
 |-------------|-----|
 | **Python 3.13+** | Project dependency (`requires-python` in `pyproject.toml`) |
 | **[uv](https://docs.astral.sh/uv/)** | Installs dependencies and runs the script in a virtualenv |
-| **ffmpeg** | Whisper uses ffmpeg to decode `.m4a`, `.mp4`, `.wav`, and other formats |
-
-Install ffmpeg on macOS:
-
-```bash
-brew install ffmpeg
-```
-
-Verify:
-
-```bash
-ffmpeg -version
-```
+| **`OPENAI_API_KEY`** | Required in the repo root `.env` for API calls |
 
 ## Quick start
 
@@ -32,7 +20,9 @@ ffmpeg -version
    uv sync --all-packages
    ```
 
-2. Run the CLI (reads `voice_archive/`, writes to `transcripts/` by default):
+2. Set `OPENAI_API_KEY` in the root `.env` (copy from `.env.example` if needed).
+
+3. Run the CLI (reads `voice_archive/`, writes to `transcripts/` by default):
 
    ```bash
    cd mina_typewriter
@@ -41,9 +31,7 @@ ffmpeg -version
 
    Override with `HARKERS_INPUT_DIR` and `HARKERS_OUTPUT_DIR` in the root `.env` if needed.
 
-   The first run downloads the Whisper model weights (size depends on the model; see below).
-
-3. Find outputs in `transcripts/`, e.g. `20260524_151230_123456789.ogg` → `20260524_151230_123456789.txt` and `20260524_151230_123456789_segments.txt`.
+4. Find outputs in `transcripts/`, e.g. `20260524_151230_123456789.ogg` → `20260524_151230_123456789.txt` and `20260524_151230_123456789_segments.txt`.
 
    Note: typed notes from [Seward's Phonograph](../sewards_phonograph/) (`typed_notes_*.txt`) are saved directly to `transcripts/` and are not processed by this tool.
 
@@ -60,156 +48,63 @@ For separate input and output folders, use the web UI. It scans for media files 
 2. Run the app:
 
    ```bash
+   cd mina_typewriter
    uv run streamlit run app.py
    ```
 
 3. Enter the **input folder** (media files) and **output folder** (transcripts).
-4. Click **Scan** to list pending files.
-5. Click **Transcribe pending** to process them. Each file produces `<basename>.txt` and `<basename>_segments.txt` in the output folder.
-
-The first run downloads the Whisper model weights. Transcription is slow on CPU; the model is loaded once per session and reused for all pending files.
+4. Choose an OpenAI model (`whisper-1` recommended — includes segment timestamps).
+5. Click **Scan** to list pending files.
+6. Click **Transcribe pending** to process them. Each file produces `<basename>.txt` and (with `whisper-1`) `<basename>_segments.txt` in the output folder.
 
 The app uses a dark theme styled to match the project artwork (`assets/mina.png`). Theme colors are configured in `.streamlit/config.toml`.
 
 ## What the script does
 
-1. Loads a Whisper model once at startup (default: `medium`).
+1. Connects to the OpenAI Audio API using `OPENAI_API_KEY`.
 2. Scans `INPUT_DIR` for files ending in `.m4a`, `.mp4`, `.wav`, or `.ogg`.
-3. Transcribes each match and writes:
+3. Skips files that already have a matching `.txt` in the output folder.
+4. Transcribes each pending file and writes:
    - `<same-basename>.txt` — full transcript as plain UTF-8 text
-   - `<same-basename>_segments.txt` — one line per segment with start/end timestamps
-4. Logs progress to the terminal (model load, files found, transcribing, output paths).
+   - `<same-basename>_segments.txt` — one line per segment with start/end timestamps (whisper-1 only)
+5. Logs progress to the terminal (files found, transcribing, output paths).
 
 Supported extensions are defined at the top of `transcribe.py`:
 
 ```python
-SUPPORTED_EXTENSIONS = (".mp4", ".m4a", ".wav", ".ogg")
+SUPPORTED_EXTENSIONS = (".mp4", ".m4a", ".wav", ".ogg", ".WAV")
 ```
 
-Add more extensions there if needed (e.g. `.mp3`, `.webm`), as long as ffmpeg can read them. Telegram voice notes from `sewards_phonograph` use `.ogg`.
+Add more extensions there if needed, as long as the OpenAI API accepts the format. Telegram voice notes from `sewards_phonograph` use `.ogg`.
 
-## Whisper models
+## Models
 
-Change the model in `transcribe.py`:
-
-```python
-MODEL_NAME = "medium"  # ← change this string
-```
-
-### Available model names
-
-| Model | Parameters | English-only variant | Relative speed | Relative accuracy | VRAM (GPU, approx.) |
-|-------|------------|----------------------|------------------|-------------------|---------------------|
-| `tiny` | ~39M | `tiny.en` | Fastest | Lowest | ~1 GB |
-| `base` | ~74M | `base.en` | Fast | Low–medium | ~1 GB |
-| `small` | ~244M | `small.en` | Medium | Medium | ~2 GB |
-| `medium` | ~769M | `medium.en` | Slow | High | ~5 GB |
-| `large` | ~1550M | — | Slowest | Highest | ~10 GB |
-
-Your installed version also supports `large-v1`, `large-v2`, `large-v3`, `large-v3-turbo`, and `turbo`. Full list from this project’s environment:
-
-```text
-tiny.en, tiny, base.en, base, small.en, small, medium.en, medium,
-large-v1, large-v2, large-v3, large, large-v3-turbo, turbo
-```
-
-Re-run after upgrading Whisper:
+Set the model in the root `.env`:
 
 ```bash
-uv run python -c "import whisper; print(whisper.available_models())"
+MINA_TRANSCRIBE_MODEL=whisper-1
 ```
 
-### Choosing a model
+| Model | Segments (`_segments.txt`) | Notes |
+|-------|---------------------------|-------|
+| `whisper-1` (default) | Yes | Uses `verbose_json` with segment timestamps |
+| `gpt-4o-mini-transcribe` | No | Text-only; faster/cheaper but no timestamp sidecar |
 
-- **`base`**: Good balance for laptop CPU; fine for clear speech in one language.
-- **`medium`** (current default): Higher accuracy than `base`; noticeably slower on CPU.
-- **`tiny` / `tiny.en`**: Fastest; useful for drafts or very long files on CPU.
-- **`.en` variants** (`tiny.en`, `base.en`, …): Trained only on English; often slightly better for English-only audio.
-- **`small` / `medium`**: Better accuracy, noticeably slower on CPU and larger download.
-- **`large`**: Best quality; practical mainly with a GPU and enough RAM/VRAM.
-
-Models are downloaded automatically on first use into your user cache (typically `~/.cache/whisper/`).
-
-### CPU warning
-
-On CPU you may see:
-
-```text
-UserWarning: FP16 is not supported on CPU; using FP32 instead
-```
-
-That is expected and safe to ignore.
-
-## Transcription options
-
-The script currently calls:
-
-```python
-result = model.transcribe(
-    str(source_path),
-    word_timestamps=True,
-    fp16=False,
-    verbose=True,
-)
-```
-
-Whisper’s `transcribe()` accepts many optional arguments. Common ones you can pass in `transcribe_file()`:
-
-| Option | Type | Description |
-|--------|------|-------------|
-| `language` | `str` | Force language (ISO 639-1), e.g. `"en"`, `"pt"`. If omitted, Whisper detects language. |
-| `task` | `str` | `"transcribe"` (default) — output in source language. `"translate"` — output English text. |
-| `verbose` | `bool` | Print segment-level progress during decoding. |
-| `temperature` | `float` or tuple | Sampling temperature; lower can reduce randomness (default pipeline uses a fallback schedule). |
-| `initial_prompt` | `str` | Hint words/names/style to bias the model (useful for proper nouns or jargon). |
-| `word_timestamps` | `bool` | Include per-word timing in the result (enabled; segment timestamps are written to `_segments.txt`). |
-| `fp16` | `bool` | Use half-precision on GPU. Set to `False` on CPU to avoid warnings. |
-
-### Examples
-
-Force Portuguese and keep transcription in Portuguese:
-
-```python
-result = model.transcribe(path, language="pt", task="transcribe")
-```
-
-Transcribe any language but get English text:
-
-```python
-result = model.transcribe(path, task="translate")
-```
-
-Bias spelling of names or domain terms:
-
-```python
-result = model.transcribe(
-    path,
-    language="en",
-    initial_prompt="Guilherme, market research, data analyst.",
-)
-```
-
-Show Whisper’s internal progress:
-
-```python
-result = model.transcribe(path, verbose=True)
-```
-
-The return value is a dict. This project uses `result["text"]` for the `.txt` file and `result["segments"]` for the `_segments.txt` file. Other keys include `language`, per-word timing inside segments, etc., if you want to extend the script later (e.g. SRT subtitles).
+The Streamlit app lets you pick between these models per session.
 
 ## Configuration reference
 
 ### CLI (`transcribe.py`)
 
-Edit constants at the top of the file:
-
 | Setting | Variable | Default |
 |---------|----------|---------|
-| Input folder | `INPUT_DIR` | `voice_archive/` at repo root (via `HARKERS_INPUT_DIR`) |
-| Output folder | `OUTPUT_DIR` | `transcripts/` at repo root (via `HARKERS_OUTPUT_DIR`) |
-| Model | `MODEL_NAME` | `medium` |
+| Input folder | `HARKERS_INPUT_DIR` | `voice_archive/` at repo root |
+| Output folder | `HARKERS_OUTPUT_DIR` | `transcripts/` at repo root |
+| Model | `MINA_TRANSCRIBE_MODEL` | `whisper-1` |
+| API key | `OPENAI_API_KEY` | Required |
+| API base URL | `OPENAI_API_BASE` | Optional (official OpenAI endpoint recommended for audio) |
 | Transcript output | `<basename>.txt` | `OUTPUT_DIR` |
-| Segment output | `<basename>_segments.txt` | `OUTPUT_DIR` |
+| Segment output | `<basename>_segments.txt` | `OUTPUT_DIR` (whisper-1 only) |
 | File types | `SUPPORTED_EXTENSIONS` | `.mp4`, `.m4a`, `.wav`, `.ogg` |
 
 Run with `uv run python transcribe.py`.
@@ -220,7 +115,7 @@ Run with `uv run python transcribe.py`.
 |---------|-------|---------|
 | Input folder | Text input in the UI | — |
 | Output folder | Text input in the UI | — |
-| Model | Selectbox in the UI | `medium` (from `MODEL_NAME` in `transcribe.py`) |
+| Model | Selectbox in the UI | `whisper-1` |
 | Pending detection | Automatic on Scan | Missing `<basename>.txt` in output folder |
 
 Run with `uv run streamlit run app.py`.
@@ -235,20 +130,27 @@ mina_typewriter/
 │   └── PROMPTS.md        # Image generation prompts
 ├── .streamlit/
 │   └── config.toml       # Streamlit theme (dark + gold)
-├── pyproject.toml        # Dependencies (openai-whisper, streamlit)
+├── pyproject.toml        # Dependencies (openai, streamlit)
 ├── transcribe.py         # Core transcription logic and CLI script
 └── README.md             # This file
 ```
 
 Dependencies are locked at the monorepo root (`../uv.lock`). Run `uv sync --all-packages` from the repo root.
 
+## Limitations
+
+- **25 MB file limit** — OpenAI rejects uploads larger than 25 MB. Long voice chains or large video files may fail; check logs for the affected filename.
+- **Cost** — API billing is per audio minute. Monitor usage if transcription runs on a schedule via `helsings_round.py`.
+- **Privacy** — audio is sent to OpenAI for processing (unlike the previous local Whisper setup).
+- **Network** — the host or container must reach `api.openai.com` (or your configured `OPENAI_API_BASE` if it supports `/audio/transcriptions`).
+
 ## Troubleshooting
 
-### `FileNotFoundError: 'ffmpeg'`
+### `ConfigurationError: OPENAI_API_KEY is required`
 
-Install ffmpeg (`brew install ffmpeg`) and ensure `ffmpeg` is on your `PATH`.
+Set `OPENAI_API_KEY` in the repo root `.env` file.
 
-### `ModuleNotFoundError: No module named 'whisper'`
+### `ModuleNotFoundError: No module named 'openai'`
 
 Run via uv so the project virtualenv is used:
 
@@ -256,19 +158,9 @@ Run via uv so the project virtualenv is used:
 uv run python transcribe.py
 ```
 
-Not:
+### API errors (429, 5xx)
 
-```bash
-python3 transcribe.py   # may use a different Python without dependencies
-```
-
-### Wrong package: `wisper`
-
-The PyPI package **`wisper`** is unrelated (AWS/protobuf tooling). This project uses **`openai-whisper`** (`import whisper`). Dependencies are declared in `pyproject.toml` as `openai-whisper`.
-
-### REPL vs shell
-
-If your prompt shows `>>>`, you are inside the Python REPL, not the terminal shell. Exit with `exit()` or Ctrl+D, then run `uv run python transcribe.py` from the shell.
+The script retries transient errors up to two times with backoff. Persistent failures are logged per file; the batch continues with remaining files.
 
 ### No files processed
 
@@ -276,11 +168,9 @@ If your prompt shows `>>>`, you are inside the Python REPL, not the terminal she
 - Confirm files use `.m4a`, `.mp4`, `.wav`, or `.ogg` (or extend the suffix check).
 - Hidden or non-media files are skipped.
 
-### Slow transcription
+### Missing `_segments.txt`
 
-- Use a smaller model (`tiny`, `base`).
-- Shorter files transcribe faster; CPU transcription is much slower than GPU.
-- The model loads once per run; processing many files in one run avoids reloading.
+Only `whisper-1` produces segment sidecars. If you set `MINA_TRANSCRIBE_MODEL=gpt-4o-mini-transcribe`, only `.txt` files are written.
 
 ## License
 

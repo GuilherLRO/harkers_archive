@@ -7,7 +7,7 @@ Curated synthesis layer on top of the generated daily dossiers.
 | Layer | Path | Role |
 |-------|------|------|
 | Raw audio | `voice_archive/` | Telegram voice capture |
-| Transcripts | `transcripts/` | Whisper output and typed notes |
+| Transcripts | `transcripts/` | OpenAI transcription output and typed notes |
 | Daily dossier | `dossier/` | Compiled daily Markdown (generated; do not hand-edit) |
 | **Rainfields Mind** | `rainfields_mind/` | Tagged weekly synthesis and instructions |
 

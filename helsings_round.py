@@ -58,6 +58,9 @@ VOICE_EXTENSIONS = (".ogg", ".m4a", ".mp4", ".wav", ".WAV")
 
 DEFAULT_INTERVAL_MINUTES = 1440
 DEFAULT_DOSSIER_INTERVAL_MINUTES = 1440
+DEFAULT_PENDING_POLL_SECONDS = 60
+MIN_PENDING_POLL_SECONDS = 10
+MAX_PENDING_POLL_SECONDS = 600
 
 logger = logging.getLogger(__name__)
 
@@ -94,6 +97,33 @@ def _parse_positive_int(raw: str, *, name: str, default: int) -> int:
         return value
     except ValueError:
         logger.warning("Invalid %s=%r; using %d", name, raw, default)
+        return default
+
+
+def _parse_bounded_int(
+    raw: str,
+    *,
+    name: str,
+    default: int,
+    minimum: int,
+    maximum: int,
+) -> int:
+    if not raw:
+        return default
+    try:
+        value = int(raw)
+        if value < minimum or value > maximum:
+            raise ValueError
+        return value
+    except ValueError:
+        logger.warning(
+            "Invalid %s=%r; using %d (allowed %d–%d)",
+            name,
+            raw,
+            default,
+            minimum,
+            maximum,
+        )
         return default
 
 
@@ -157,6 +187,16 @@ def load_interval_minutes() -> int:
         os.environ.get("TRANSCRIBE_INTERVAL_MINUTES", "").strip(),
         name="TRANSCRIBE_INTERVAL_MINUTES",
         default=DEFAULT_INTERVAL_MINUTES,
+    )
+
+
+def load_pending_poll_seconds() -> int:
+    return _parse_bounded_int(
+        os.environ.get("TRANSCRIBE_PENDING_POLL_SECONDS", "").strip(),
+        name="TRANSCRIBE_PENDING_POLL_SECONDS",
+        default=DEFAULT_PENDING_POLL_SECONDS,
+        minimum=MIN_PENDING_POLL_SECONDS,
+        maximum=MAX_PENDING_POLL_SECONDS,
     )
 
 
@@ -302,6 +342,7 @@ def format_weekly_delivery_failure_message(error: BaseException) -> str:
 
 def format_startup_message(
     *,
+    pending_poll_seconds: int,
     interval_minutes: int,
     dossier_interval_minutes: int,
     run_dossier: bool,
@@ -309,7 +350,11 @@ def format_startup_message(
 ) -> str:
     lines = [
         "Harker's Archive — archive runner started.",
-        f"Transcription pass every {interval_minutes} minute(s).",
+        (
+            f"Transcription when new voice files arrive (check every "
+            f"{pending_poll_seconds} second(s)); full pass backstop every "
+            f"{interval_minutes} minute(s)."
+        ),
     ]
     if run_dossier:
         lines.append(
@@ -388,6 +433,7 @@ def notify_startup(
     voice_dir: Path,
     transcripts_dir: Path,
     *,
+    pending_poll_seconds: int,
     interval_minutes: int,
     dossier_interval_minutes: int,
     run_dossier: bool,
@@ -403,6 +449,7 @@ def notify_startup(
         return
 
     message = format_startup_message(
+        pending_poll_seconds=pending_poll_seconds,
         interval_minutes=interval_minutes,
         dossier_interval_minutes=dossier_interval_minutes,
         run_dossier=run_dossier,
@@ -679,6 +726,82 @@ def run_pass(
     )
 
 
+def _ensure_bot_running() -> None:
+    if _bot_proc is None or _bot_proc.poll() is not None:
+        code = None if _bot_proc is None else _bot_proc.returncode
+        logger.error("Bot process exited with code %s", code)
+        raise SystemExit(1)
+
+
+def _sleep_seconds(seconds: int) -> None:
+    slept = 0
+    while slept < seconds and not _shutting_down:
+        _ensure_bot_running()
+        time.sleep(1)
+        slept += 1
+
+
+def _sleep_until_pending_or_backstop(
+    voice_dir: Path,
+    transcripts_dir: Path,
+    *,
+    last_pass_time: float,
+    interval_seconds: float,
+) -> None:
+    while not _shutting_down:
+        _ensure_bot_running()
+        if missing_transcripts(voice_dir, transcripts_dir):
+            return
+        if time.time() - last_pass_time >= interval_seconds:
+            return
+        time.sleep(1)
+
+
+def _log_runner_mode(
+    *,
+    pending_poll_seconds: int,
+    interval_minutes: int,
+    dossier_interval_minutes: int,
+    run_dossier: bool,
+    run_rainfields: bool,
+) -> None:
+    transcribe_line = (
+        "Archive runner active — transcribe when pending every %d second(s), "
+        "full pass backstop every %d minute(s)"
+    ) % (pending_poll_seconds, interval_minutes)
+    if run_dossier and run_rainfields:
+        logger.info(
+            "%s, dossier compile on new transcripts or every %d minute(s), "
+            "Rainfields weekly refresh after each pass, "
+            "weekly note delivery every %d minute(s)",
+            transcribe_line,
+            dossier_interval_minutes,
+            dossier_interval_minutes,
+        )
+    elif run_dossier:
+        logger.info(
+            "%s, dossier compile on new transcripts or every %d minute(s), "
+            "weekly note delivery every %d minute(s), Rainfields disabled",
+            transcribe_line,
+            dossier_interval_minutes,
+            dossier_interval_minutes,
+        )
+    elif run_rainfields:
+        logger.info(
+            "%s, dossier disabled, Rainfields weekly refresh after each pass, "
+            "weekly note delivery every %d minute(s)",
+            transcribe_line,
+            dossier_interval_minutes,
+        )
+    else:
+        logger.info(
+            "%s, dossier and Rainfields refresh disabled, "
+            "weekly note delivery every %d minute(s)",
+            transcribe_line,
+            dossier_interval_minutes,
+        )
+
+
 def main() -> None:
     global _bot_proc
 
@@ -696,6 +819,7 @@ def main() -> None:
 
     interval_minutes = load_interval_minutes()
     interval_seconds = interval_minutes * 60
+    pending_poll_seconds = load_pending_poll_seconds()
     dossier_interval_minutes = load_dossier_interval_minutes()
     dossier_interval_seconds = dossier_interval_minutes * 60
     run_dossier = dossier_enabled()
@@ -705,46 +829,19 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _handle_shutdown)
 
     _bot_proc = start_bot()
-    if run_dossier and run_rainfields:
-        logger.info(
-            "Archive runner active — transcribe every %d minute(s), "
-            "dossier compile on new transcripts or every %d minute(s), "
-            "Rainfields weekly refresh after each pass, "
-            "weekly note delivery every %d minute(s)",
-            interval_minutes,
-            dossier_interval_minutes,
-            dossier_interval_minutes,
-        )
-    elif run_dossier:
-        logger.info(
-            "Archive runner active — transcribe every %d minute(s), "
-            "dossier compile on new transcripts or every %d minute(s), "
-            "weekly note delivery every %d minute(s), Rainfields disabled",
-            interval_minutes,
-            dossier_interval_minutes,
-            dossier_interval_minutes,
-        )
-    elif run_rainfields:
-        logger.info(
-            "Archive runner active — transcribe every %d minute(s), "
-            "dossier disabled, Rainfields weekly refresh after each pass, "
-            "weekly note delivery every %d minute(s)",
-            interval_minutes,
-            dossier_interval_minutes,
-        )
-    else:
-        logger.info(
-            "Archive runner active — transcribe every %d minute(s), "
-            "dossier and Rainfields refresh disabled, "
-            "weekly note delivery every %d minute(s)",
-            interval_minutes,
-            dossier_interval_minutes,
-        )
+    _log_runner_mode(
+        pending_poll_seconds=pending_poll_seconds,
+        interval_minutes=interval_minutes,
+        dossier_interval_minutes=dossier_interval_minutes,
+        run_dossier=run_dossier,
+        run_rainfields=run_rainfields,
+    )
 
     notify_startup(
         token,
         voice_dir,
         transcripts_dir,
+        pending_poll_seconds=pending_poll_seconds,
         interval_minutes=interval_minutes,
         dossier_interval_minutes=dossier_interval_minutes,
         run_dossier=run_dossier,
@@ -757,33 +854,66 @@ def main() -> None:
 
     try:
         while not _shutting_down:
-            if _bot_proc.poll() is not None:
-                logger.error("Bot process exited with code %s", _bot_proc.returncode)
-                raise SystemExit(1)
+            _ensure_bot_running()
 
-            pass_result, last_dossier_compile_time, last_weekly_delivery_time = run_pass(
-                token,
+            pending = missing_transcripts(voice_dir, transcripts_dir)
+            backstop_due = time.time() - last_pass_time >= interval_seconds
+
+            if pending or backstop_due:
+                pass_result, last_dossier_compile_time, last_weekly_delivery_time = run_pass(
+                    token,
+                    voice_dir,
+                    transcripts_dir,
+                    dossier_dir,
+                    rainfields_dir,
+                    last_pass_time,
+                    dossier_interval_seconds=dossier_interval_seconds,
+                    last_dossier_compile_time=last_dossier_compile_time,
+                    last_weekly_delivery_time=last_weekly_delivery_time,
+                    run_dossier=run_dossier,
+                    run_rainfields=run_rainfields,
+                )
+                last_pass_time = pass_result.pass_time
+
+                if missing_transcripts(voice_dir, transcripts_dir):
+                    logger.info(
+                        "Pending transcripts remain; next check in %d second(s)",
+                        pending_poll_seconds,
+                    )
+                    _sleep_seconds(pending_poll_seconds)
+                else:
+                    remaining_minutes = max(
+                        1,
+                        int((interval_seconds - (time.time() - last_pass_time)) / 60),
+                    )
+                    logger.info(
+                        "No pending transcripts; checking for new voice every second "
+                        "(backstop pass in up to %d minute(s))",
+                        remaining_minutes,
+                    )
+                    _sleep_until_pending_or_backstop(
+                        voice_dir,
+                        transcripts_dir,
+                        last_pass_time=last_pass_time,
+                        interval_seconds=interval_seconds,
+                    )
+                continue
+
+            remaining_minutes = max(
+                1,
+                int((interval_seconds - (time.time() - last_pass_time)) / 60),
+            )
+            logger.info(
+                "Idle — checking for new voice every second "
+                "(backstop pass in up to %d minute(s))",
+                remaining_minutes,
+            )
+            _sleep_until_pending_or_backstop(
                 voice_dir,
                 transcripts_dir,
-                dossier_dir,
-                rainfields_dir,
-                last_pass_time,
-                dossier_interval_seconds=dossier_interval_seconds,
-                last_dossier_compile_time=last_dossier_compile_time,
-                last_weekly_delivery_time=last_weekly_delivery_time,
-                run_dossier=run_dossier,
-                run_rainfields=run_rainfields,
+                last_pass_time=last_pass_time,
+                interval_seconds=interval_seconds,
             )
-            last_pass_time = pass_result.pass_time
-
-            logger.info("Next transcription pass in %d minute(s)", interval_minutes)
-            slept = 0
-            while slept < interval_seconds and not _shutting_down:
-                if _bot_proc.poll() is not None:
-                    logger.error("Bot process exited with code %s", _bot_proc.returncode)
-                    raise SystemExit(1)
-                time.sleep(1)
-                slept += 1
     finally:
         stop_bot(_bot_proc)
 

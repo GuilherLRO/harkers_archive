@@ -32,7 +32,3 @@ services:
       - ./dossier:/app/dossier
       - ./rainfields_mind:/app/rainfields_mind
       - ./logs:/app/logs
-      - whisper-cache:/root/.cache/whisper
-
-volumes:
-  whisper-cache:

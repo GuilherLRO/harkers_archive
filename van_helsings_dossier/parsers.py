@@ -135,7 +135,7 @@ def parse_voice_transcript(
         source_type="voice_transcript",
         source_file=path.name,
         segment_file=segment_file,
-        original_source="Telegram voice / Whisper",
+        original_source="Telegram voice / OpenAI",
         body=body,
         content_hash=body_hash,
         segments=segments,

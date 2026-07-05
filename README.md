@@ -12,14 +12,14 @@ Mina Murray — later Mina Harker — does not merely listen. She **types**, **o
 
 **Harker's Archive** follows that same discipline for a personal record base. Speak or write from wherever you are; let the phonograph preserve the voice; let the typewriter fix it to the page. What accumulates in `transcripts/` is the working manuscript — incomplete, open, and meant to grow.
 
-In modern terms: capture via Telegram, archive locally, transcribe with Whisper when you are ready. The names and flow are metaphor, not historical claim — but the habit of gathering many voices into one record is the point.
+In modern terms: capture via Telegram, archive locally, transcribe via the OpenAI Audio API when you are ready. The names and flow are metaphor, not historical claim — but the habit of gathering many voices into one record is the point.
 
 ## Then and now
 
 | In the novel | In this repository |
 |--------------|-------------------|
 | Seward dictating into the phonograph | Voice messages → `voice_archive/*.ogg` via [sewards_phonograph](sewards_phonograph/) |
-| Mina typing phonograph cylinders | Whisper transcription → `transcripts/*.txt` via [mina_typewriter](mina_typewriter/) |
+| Mina typing phonograph cylinders | OpenAI transcription → `transcripts/*.txt` via [mina_typewriter](mina_typewriter/) |
 | Letters, journals, telegrams | Typed Telegram notes → `transcripts/typed_notes_*.txt` |
 | Mina's assembled manuscript | The `transcripts/` folder — the compiled readable record |
 | Van Helsing's dossier | Daily Markdown notes in `dossier/` via [van_helsings_dossier](van_helsings_dossier/) |
@@ -31,7 +31,7 @@ In modern terms: capture via Telegram, archive locally, transcribe with Whisper 
 |--------|------|------|------|
 | **Harker's Archive** | The compiled stack — many sources, one record | Monorepo root; shared `voice_archive/` and `transcripts/` | — |
 | [**Dr. Seward's Phonograph**](sewards_phonograph/) | Seward at the phonograph — voice preserved to cylinder | Telegram bot — saves voice (`.ogg`) and typed text (`.txt`) | [README →](sewards_phonograph/README.md) |
-| [**Mina's Typewriter**](mina_typewriter/) | Mina at the keys — whispers fixed to the page | Whisper batch transcription — CLI + Streamlit | [README →](mina_typewriter/README.md) |
+| [**Mina's Typewriter**](mina_typewriter/) | Mina at the keys — whispers fixed to the page | OpenAI Audio API batch transcription — CLI + Streamlit | [README →](mina_typewriter/README.md) |
 | [**Van Helsing's Dossier**](van_helsings_dossier/) | Van Helsing at the dossier — testimony ordered into one case file | Compile `transcripts/` into daily Obsidian Markdown | [README →](van_helsings_dossier/README.md) |
 
 **Root coordinator:** [`helsings_round.py`](helsings_round.py) + [`helsings_roundctl.sh`](helsings_roundctl.sh) — optional; runs the phonograph, schedules the typewriter, compiles/delivers the dossier, and refreshes Rainfields Mind weekly notes without changing sub-projects.
@@ -62,7 +62,7 @@ flowchart LR
   SP -->|voice message| VA
   SP -->|plain text| TR
   VA --> MT
-  MT -->|Whisper output| TR
+  MT -->|transcript output| TR
   TR --> VD
   VD -->|daily Markdown| DO
   DO -->|Rainfields agent| RM
@@ -78,7 +78,7 @@ flowchart LR
 | Transcribe voice | Mina's Typewriter | Manual — run CLI or Streamlit when ready |
 | Compile dossier | Van Helsing's Dossier | Manual — run CLI when ready; or automatic via `helsings_round.py` |
 | Rainfields Mind | `rainfields_mind/` | Agent or manual — see [Rainfields Mind](#rainfields-mind) |
-| Run everything | `helsings_round.py` | Bot always on + daily transcription + dossier compile + weekly note delivery (see `TRANSCRIBE_INTERVAL_MINUTES`, `DOSSIER_INTERVAL_MINUTES`) |
+| Run everything | `helsings_round.py` | Bot always on + transcribe when pending + daily backstop pass (see `TRANSCRIBE_PENDING_POLL_SECONDS`, `TRANSCRIBE_INTERVAL_MINUTES`, `DOSSIER_INTERVAL_MINUTES`) |
 
 Typed notes land in `transcripts/` immediately. Voice files wait in `voice_archive/` until you run Mina's Typewriter (or `helsings_round.py` on its schedule).
 
@@ -87,7 +87,7 @@ Typed notes land in `transcripts/` immediately. Voice files wait in `voice_archi
 ```text
 harkers_archive/
 ├── voice_archive/       # raw audio (.ogg from Telegram) — gitignored
-├── transcripts/         # typed notes + Whisper .txt output — gitignored
+├── transcripts/         # typed notes + transcription .txt output — gitignored
 ├── dossier/             # compiled daily Markdown notes — gitignored
 ├── rainfields_mind/     # weekly curated synthesis (Rainfields Mind) — tracked in git
 │   ├── README.md
@@ -96,7 +96,7 @@ harkers_archive/
 │   ├── index.md
 │   └── weekly/          # one file per ISO week, e.g. 2026-W22.md
 ├── sewards_phonograph/  # Telegram capture bot
-├── mina_typewriter/     # Whisper transcription
+├── mina_typewriter/     # OpenAI Audio API transcription
 ├── van_helsings_dossier/ # transcript compiler → daily Markdown
 ├── helsings_round.py       # optional: bot + scheduled transcribe coordinator
 ├── helsings_roundctl.sh    # start / stop / restart / status / logs / logs-http
@@ -113,7 +113,7 @@ harkers_archive/
 |--------|---------|---------|
 | Voice message | `{YYYYMMDD}_{HHMMSS}_{user_id}.ogg` | `20260524_151230_123456789.ogg` |
 | Typed note (daily file) | `typed_notes_{YYYYMMDD}_{user_id}.txt` | `typed_notes_20260524_123456789.txt` |
-| Whisper transcript | `{basename}.txt` + `{basename}_segments.txt` | `20260524_151230_123456789.txt` |
+| Voice transcript | `{basename}.txt` + `{basename}_segments.txt` | `20260524_151230_123456789.txt` |
 | Dossier (daily journal) | `{YYYY-MM-DD}.md` | `2026-06-02.md` |
 | Rainfields Mind weekly note | `weekly/{YYYY-WNN}.md` | `weekly/2026-W22.md` |
 
@@ -188,9 +188,8 @@ See [rainfields_mind/README.md](rainfields_mind/README.md) for CLI flags, env va
 |-------------|---------|
 | **Python 3.13+** | All modules |
 | **[uv](https://docs.astral.sh/uv/)** | Dependency management |
-| **ffmpeg** (`brew install ffmpeg`) | Mina's Typewriter |
 | **Telegram bot token** ([@BotFather](https://t.me/BotFather)) | Seward's Phonograph |
-| **OpenAI API key** | Rainfields Mind agent (`compile_week.py`) |
+| **OpenAI API key** | Mina's Typewriter and Rainfields Mind agent |
 | **Docker + Compose** (optional) | Run on a VPS — see [Docker (VPS)](#9-docker-vps) |
 
 ## Tutorial
@@ -220,6 +219,7 @@ Edit `.env` at the **repo root** with **absolute** paths:
 
 ```bash
 TELEGRAM_BOT_TOKEN=your-token-from-botfather
+OPENAI_API_KEY=your-openai-api-key
 SAVE_DIR=/absolute/path/to/harkers_archive/voice_archive
 # Optional; defaults to sibling transcripts/ next to SAVE_DIR
 # TRANSCRIPTS_DIR=/absolute/path/to/harkers_archive/transcripts
@@ -262,7 +262,7 @@ Or use the Streamlit app to pick custom folders:
 uv run streamlit run app.py
 ```
 
-Each voice file produces `<basename>.txt` and `<basename>_segments.txt`. The first run downloads Whisper model weights — see [mina_typewriter/README.md](mina_typewriter/README.md) for model choices and tuning.
+Each voice file produces `<basename>.txt` and `<basename>_segments.txt`. Transcription uses the OpenAI Audio API — see [mina_typewriter/README.md](mina_typewriter/README.md) for model options and configuration.
 
 ### 6. Compile journal (Van Helsing's Dossier)
 
@@ -298,7 +298,7 @@ Foreground (same terminal):
 uv run python helsings_round.py
 ```
 
-Set `TRANSCRIBE_INTERVAL_MINUTES` in the root `.env` to change how often Mina's Typewriter runs. Users who recently sent voice notes receive a Telegram summary after each pass. If that summary cannot be sent (network or Telegram API error), the same users get a short failure notice instead; the runner keeps going and does not stop the capture bot.
+When `helsings_round.py` is running, new voice files in `voice_archive/` are transcribed within about `TRANSCRIBE_PENDING_POLL_SECONDS` (default **60** seconds). A full coordinator pass still runs on the `TRANSCRIBE_INTERVAL_MINUTES` backstop (default **1440**) even when nothing is pending — for dossier compile and weekly note delivery. Users who recently sent voice notes receive a Telegram summary after each transcription pass. If that summary cannot be sent (network or Telegram API error), the same users get a short failure notice instead; the runner keeps going and does not stop the capture bot.
 
 Van Helsing's Dossier runs on the same coordinator: it compiles `transcripts/` into daily Markdown when new voice transcripts appear, or at least every 24 hours (see `DOSSIER_INTERVAL_MINUTES`). Set `DOSSIER_ENABLED=false` to disable dossier compile while keeping capture and transcription.
 
@@ -320,7 +320,7 @@ Run [`helsings_round.py`](helsings_round.py) in a container on a VPS. Archive da
 git clone https://github.com/GuilherLRO/harkers_archive.git
 cd harkers_archive
 cp .env.example .env
-# Edit .env — TELEGRAM_BOT_TOKEN, OPENAI_API_KEY (if Rainfields enabled)
+# Edit .env — TELEGRAM_BOT_TOKEN, OPENAI_API_KEY (required for transcription and Rainfields)
 mkdir -p voice_archive transcripts dossier logs rainfields_mind/weekly
 docker compose up -d --build
 ```
@@ -331,7 +331,7 @@ docker compose up -d --build
 docker compose logs -f
 docker compose restart
 docker compose stop
-docker compose down              # keeps host folders and whisper-cache volume
+docker compose down              # keeps host folders
 ```
 
 **Host folders** (same paths inside the container at `/app/…`):
@@ -339,12 +339,12 @@ docker compose down              # keeps host folders and whisper-cache volume
 | Host path | Purpose |
 |-----------|---------|
 | `voice_archive/` | Raw voice files from Telegram |
-| `transcripts/` | Typed notes + Whisper output |
+| `transcripts/` | Typed notes + transcription output |
 | `dossier/` | Compiled daily Markdown |
 | `rainfields_mind/` | Weekly synthesis + agent inputs |
 | `logs/` | Telegram HTTP log (`helsings_round_http.log`) |
 
-Coordinator activity goes to `docker compose logs`. Whisper model weights stay in the `whisper-cache` Docker volume (not on the host).
+Coordinator activity goes to `docker compose logs`. Transcription calls the OpenAI API — ensure `OPENAI_API_KEY` is set in `.env` and the container can reach the network.
 
 **Notes**
 
@@ -355,7 +355,7 @@ Coordinator activity goes to `docker compose logs`. Whisper model weights stay i
 
 Path overrides (`SAVE_DIR=/app/…`) are set in `docker-compose.yml` so your host `.env` can keep macOS paths for native runs.
 
-First transcription downloads Whisper weights and can take several minutes on CPU — see [mina_typewriter/README.md](mina_typewriter/README.md) for RAM requirements.
+First transcription requires a valid `OPENAI_API_KEY` and network access — see [mina_typewriter/README.md](mina_typewriter/README.md) for model options and limits.
 
 ## Testing
 
@@ -376,11 +376,15 @@ All settings live in the root `.env`. Sub-projects resolve it automatically.
 | `TELEGRAM_BOT_TOKEN` | Phonograph | Yes | Bot token from BotFather |
 | `SAVE_DIR` | Phonograph | Yes | Absolute path for voice `.ogg` files (e.g. `…/voice_archive`) |
 | `TRANSCRIPTS_DIR` | Phonograph | No | Absolute path for typed notes; defaults to sibling `transcripts/` next to `SAVE_DIR` |
+| `OPENAI_API_KEY` | Typewriter, Rainfields | Yes (Typewriter) | OpenAI API key for transcription and weekly synthesis |
+| `MINA_TRANSCRIBE_MODEL` | Typewriter | No | OpenAI transcription model (default `whisper-1`) |
+| `OPENAI_API_BASE` | Typewriter, Rainfields | No | Optional API base URL (official OpenAI endpoint recommended for audio) |
 | `HARKERS_INPUT_DIR` | Typewriter | No | Override input folder; defaults to `voice_archive/` |
 | `HARKERS_OUTPUT_DIR` | Typewriter | No | Override output folder; defaults to `transcripts/` |
 | `HARKERS_TRANSCRIPTS_DIR` | Dossier | No | Override transcript input; defaults to `transcripts/` |
 | `HARKERS_DOSSIER_DIR` | Dossier | No | Override dossier output; defaults to `dossier/` |
-| `TRANSCRIBE_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between scheduled transcription passes (default `1440`) |
+| `TRANSCRIBE_PENDING_POLL_SECONDS` | `helsings_round.py` | No | Seconds between checks when untranscribed voice files exist (default `60`) |
+| `TRANSCRIBE_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between full coordinator backstop passes when idle (default `1440`) |
 | `DOSSIER_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between dossier compile and weekly note delivery cycles (default `1440`) |
 | `DOSSIER_ENABLED` | `helsings_round.py` | No | Enable dossier compile (default `true`) |
 | `RAINFIELDS_ENABLED` | `helsings_round.py` | No | Refresh Rainfields Mind weekly notes after each transcription pass (default `true`) |
@@ -392,7 +396,7 @@ All settings live in the root `.env`. Sub-projects resolve it automatically.
 Each module has its own README with artwork, troubleshooting, and reference docs:
 
 - **[Dr. Seward's Phonograph](sewards_phonograph/README.md)** — commands, filename rules, background running, manual test plan
-- **[Mina's Typewriter](mina_typewriter/README.md)** — Whisper models, transcription options, Streamlit UI, CPU/GPU notes
+- **[Mina's Typewriter](mina_typewriter/README.md)** — OpenAI models, transcription options, Streamlit UI, API limits
 - **[Van Helsing's Dossier](van_helsings_dossier/README.md)** — compile transcripts into Obsidian daily Markdown notes
 - **[Rainfields Mind](rainfields_mind/README.md)** — weekly synthesis from dossiers; tagging and LLM instructions
 

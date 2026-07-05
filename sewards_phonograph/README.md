@@ -137,7 +137,7 @@ Telegram text  → sewards_phonograph → transcripts/typed_notes_YYYYMMDD_<user
 | Capture text | This bot | Yes, while `bot.py` is running |
 | Transcribe voice | `mina_typewriter` | No — run CLI or Streamlit manually |
 
-Point `SAVE_DIR` at the same folder `mina_typewriter` reads (`voice_archive/` by default). Typed notes go directly to `transcripts/` and do not need Whisper. See the [root README](../README.md).
+Point `SAVE_DIR` at the same folder `mina_typewriter` reads (`voice_archive/` by default). Typed notes go directly to `transcripts/` and do not need transcription. See the [root README](../README.md).
 
 ## Configuration reference
 

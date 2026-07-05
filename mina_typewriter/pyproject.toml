@@ -1,12 +1,12 @@
 [project]
 name = "mina-typewriter"
 version = "0.1.0"
-description = "Batch-transcribe audio and video with OpenAI Whisper (CLI + Streamlit)"
+description = "Batch-transcribe audio and video with the OpenAI Audio API (CLI + Streamlit)"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.13"
 dependencies = [
-    "openai-whisper>=20240930",
+    "openai>=1.0.0",
     "python-dotenv>=1.0.0",
     "streamlit>=1.40.0",
 ]

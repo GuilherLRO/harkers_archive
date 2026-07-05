@@ -5,11 +5,17 @@ from __future__ import annotations
 from pathlib import Path
 
 import streamlit as st
-import whisper
 
-from transcribe import MODEL_NAME, missing_transcriptions, transcribe_file
+from transcribe import (
+    MODEL_NAME,
+    ConfigurationError,
+    create_client,
+    missing_transcriptions,
+    supports_segments,
+    transcribe_file,
+)
 
-MODEL_OPTIONS = ("tiny", "base", "small", "medium", "large")
+MODEL_OPTIONS = ("whisper-1", "gpt-4o-mini-transcribe")
 ASSETS_DIR = Path(__file__).parent / "assets"
 HERO_IMAGE = ASSETS_DIR / "mina.png"
 
@@ -68,11 +74,6 @@ st.markdown(
 )
 
 
-@st.cache_resource
-def load_model(model_name: str) -> whisper.Whisper:
-    return whisper.load_model(model_name)
-
-
 def validate_dirs(input_dir: Path, output_dir: Path) -> str | None:
     if not input_dir.is_dir():
         return f"Input folder does not exist: {input_dir}"
@@ -91,13 +92,13 @@ def render_hero() -> None:
         with hero_right:
             st.markdown("# Mina's Typewriter")
             st.markdown(
-                '<p class="hero-tagline">Gathering whispers from the air...</p>',
+                '<p class="hero-tagline">Sending voices to the cloud...</p>',
                 unsafe_allow_html=True,
             )
             st.markdown(
                 '<p class="hero-blurb">Scan a folder of audio or video, '
-                "transcribe only what's missing, and write plain-text "
-                "transcripts with timestamped segments.</p>",
+                "transcribe only what's missing via the OpenAI Audio API, "
+                "and write plain-text transcripts with timestamped segments.</p>",
                 unsafe_allow_html=True,
             )
 
@@ -108,11 +109,18 @@ render_hero()
 
 input_path = st.text_input("Input folder", placeholder="/path/to/audio")
 output_path = st.text_input("Output folder", placeholder="/path/to/transcripts")
-model_name = st.selectbox(
-    "Whisper model",
-    MODEL_OPTIONS,
-    index=MODEL_OPTIONS.index(MODEL_NAME),
+default_model_index = (
+    MODEL_OPTIONS.index(MODEL_NAME) if MODEL_NAME in MODEL_OPTIONS else 0
 )
+model_name = st.selectbox(
+    "OpenAI transcription model",
+    MODEL_OPTIONS,
+    index=default_model_index,
+    help="whisper-1 writes both .txt and _segments.txt. "
+    "gpt-4o-mini-transcribe writes .txt only.",
+)
+if not supports_segments(model_name):
+    st.caption("This model does not produce timestamped segment files.")
 
 col_scan, col_transcribe = st.columns(2)
 scan_clicked = col_scan.button("Scan", type="secondary", use_container_width=True)
@@ -144,27 +152,33 @@ if scan_clicked or transcribe_clicked:
                 st.success("Nothing to transcribe.")
                 st.session_state.pending = []
             else:
-                with st.status(f"Loading model ({model_name})...") as status:
-                    model = load_model(model_name)
-                    status.update(label="Model loaded.", state="running")
+                try:
+                    with st.status("Connecting to OpenAI...") as status:
+                        client = create_client()
+                        status.update(label="Ready.", state="running")
+                except ConfigurationError as exc:
+                    st.error(str(exc))
+                else:
+                    progress = st.progress(0, text="Transcribing...")
+                    for index, filename in enumerate(pending, start=1):
+                        transcribe_file(
+                            client,
+                            input_dir,
+                            filename,
+                            output_dir,
+                            model=model_name,
+                            index=index,
+                            total=len(pending),
+                        )
+                        progress.progress(
+                            index / len(pending),
+                            text=f"Transcribed {filename} ({index}/{len(pending)})",
+                        )
 
-                progress = st.progress(0, text="Transcribing...")
-                for index, filename in enumerate(pending, start=1):
-                    transcribe_file(
-                        model,
-                        input_dir,
-                        filename,
-                        output_dir,
-                        index=index,
-                        total=len(pending),
+                    st.session_state.pending = missing_transcriptions(
+                        input_dir, output_dir
                     )
-                    progress.progress(
-                        index / len(pending),
-                        text=f"Transcribed {filename} ({index}/{len(pending)})",
-                    )
-
-                st.session_state.pending = missing_transcriptions(input_dir, output_dir)
-                st.success(f"Finished transcribing {len(pending)} file(s).")
+                    st.success(f"Finished transcribing {len(pending)} file(s).")
 
 if st.session_state.pending:
     st.subheader("Pending files")
