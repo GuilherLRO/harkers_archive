@@ -42,7 +42,6 @@ import re
 import signal
 import subprocess
 import time
-from datetime import date
 from pathlib import Path
 
 from archive_logging import configure_logging
@@ -303,27 +302,25 @@ def latest_weekly_file(rainfields_dir: Path) -> Path | None:
     return max(candidates, key=lambda item: parse_iso_week_stem(item.stem) or (0, 0))
 
 
-def format_notify_message(
-    *,
+def newly_transcribed(
     transcribed_before: list[str],
     transcribed_after: list[str],
-) -> str:
-    done = [name for name in transcribed_before if name not in transcribed_after]
-
-    if not done:
-        return "Mina's Typewriter — scheduled pass complete. Nothing new to transcribe."
-
-    file_list = ", ".join(done[:5])
-    if len(done) > 5:
-        file_list += f", … (+{len(done) - 5} more)"
-    return f"Mina's Typewriter — scheduled pass complete. Transcribed {len(done)} file(s): {file_list}."
+) -> list[str]:
+    return [name for name in transcribed_before if name not in transcribed_after]
 
 
-def format_transcribe_failure_message(error: BaseException) -> str:
+def transcript_path_for_media(transcripts_dir: Path, media_name: str) -> Path:
+    return transcripts_dir / f"{Path(media_name).stem}.txt"
+
+
+def format_transcript_delivery_caption(path: Path) -> str:
+    return f"Mina's Typewriter — {path.name}"
+
+
+def format_transcript_delivery_failure_message(error: BaseException) -> str:
     return (
-        "Mina's Typewriter — could not send the pass summary "
-        f"({type(error).__name__}). Transcription may still have completed; "
-        "check helsings_round.log if needed."
+        "Mina's Typewriter — could not deliver a transcript "
+        f"({type(error).__name__}). Check helsings_round.log if needed."
     )
 
 
@@ -339,27 +336,6 @@ def format_weekly_delivery_failure_message(error: BaseException) -> str:
         "Rainfields Mind — could not deliver the weekly note "
         f"({type(error).__name__}). Check helsings_round.log if needed."
     )
-
-
-def format_dossier_delivery_caption(path: Path) -> str:
-    return f"Van Helsing's Dossier — today's note ({path.stem})."
-
-
-def format_dossier_delivery_failure_message(error: BaseException) -> str:
-    return (
-        "Van Helsing's Dossier — could not deliver today's note "
-        f"({type(error).__name__}). Check helsings_round.log if needed."
-    )
-
-
-def todays_dossier_file(
-    dossier_dir: Path,
-    *,
-    day: date | None = None,
-) -> Path | None:
-    target = day or date.today()
-    path = dossier_dir / f"{target.isoformat()}.md"
-    return path if path.is_file() else None
 
 
 def format_startup_message(
@@ -378,11 +354,13 @@ def format_startup_message(
             f"{interval_minutes} minute(s)."
         ),
     ]
+    lines.append(
+        "Mina's Typewriter — each new transcript (.txt) is sent as a Telegram document."
+    )
     if run_dossier:
         lines.append(
             "Van Helsing's Dossier — compile on new voice transcripts or every "
-            f"{dossier_interval_minutes} minute(s); deliver today's note when "
-            "a daily file is written."
+            f"{dossier_interval_minutes} minute(s)."
         )
     else:
         lines.append("Van Helsing's Dossier is disabled.")
@@ -450,7 +428,7 @@ async def _send_weekly_documents(
     )
 
 
-async def _send_dossier_documents(
+async def _send_transcript_documents(
     token: str,
     user_ids: set[int],
     path: Path,
@@ -461,26 +439,8 @@ async def _send_dossier_documents(
         user_ids,
         path,
         caption,
-        kind="dossier note",
+        kind="transcript",
     )
-
-
-def notify_users(token: str, user_ids: set[int], message: str) -> None:
-    if not user_ids:
-        logger.info("No users to notify")
-        return
-
-    logger.info("Notifying %d user(s)", len(user_ids))
-    try:
-        asyncio.run(_send_messages(token, user_ids, message))
-    except Exception as exc:
-        logger.exception("Summary notification failed: %s", exc)
-        try:
-            failure_text = format_transcribe_failure_message(exc)
-            asyncio.run(_send_messages(token, user_ids, failure_text))
-            logger.info("Sent failure notice to %d user(s)", len(user_ids))
-        except Exception:
-            logger.exception("Failure notification also failed")
 
 
 def notify_startup(
@@ -539,26 +499,48 @@ def deliver_weekly_file(token: str, user_ids: set[int], path: Path) -> None:
             logger.exception("Weekly delivery failure notification also failed")
 
 
-def deliver_dossier_file(token: str, user_ids: set[int], path: Path) -> None:
+def deliver_transcript_file(token: str, user_ids: set[int], path: Path) -> None:
     if not user_ids:
-        logger.info("No archive users to receive dossier delivery")
+        logger.info("No users to receive transcript %s", path.name)
         return
 
-    caption = format_dossier_delivery_caption(path)
+    caption = format_transcript_delivery_caption(path)
     logger.info(
-        "Delivering dossier note %s to %d user(s)",
+        "Delivering transcript %s to %d user(s)",
         path.name,
         len(user_ids),
     )
     try:
-        asyncio.run(_send_dossier_documents(token, user_ids, path, caption))
+        asyncio.run(_send_transcript_documents(token, user_ids, path, caption))
     except Exception as exc:
-        logger.exception("Dossier delivery failed: %s", exc)
+        logger.exception("Transcript delivery failed: %s", exc)
         try:
-            failure_text = format_dossier_delivery_failure_message(exc)
+            failure_text = format_transcript_delivery_failure_message(exc)
             asyncio.run(_send_messages(token, user_ids, failure_text))
         except Exception:
-            logger.exception("Dossier delivery failure notification also failed")
+            logger.exception("Transcript delivery failure notification also failed")
+
+
+def deliver_new_transcripts(
+    token: str,
+    transcripts_dir: Path,
+    media_names: list[str],
+    *,
+    fallback_user_ids: set[int],
+) -> None:
+    """Send each newly written transcript .txt as a Telegram document."""
+    if not media_names:
+        return
+
+    for media_name in media_names:
+        path = transcript_path_for_media(transcripts_dir, media_name)
+        if not path.is_file():
+            logger.warning("Expected transcript missing after pass: %s", path)
+            continue
+
+        owner_id = parse_user_id_from_voice_filename(media_name)
+        recipients = {owner_id} if owner_id is not None else set(fallback_user_ids)
+        deliver_transcript_file(token, recipients, path)
 
 
 def start_bot() -> subprocess.Popen[bytes]:
@@ -590,7 +572,7 @@ def run_transcribe() -> int:
     return result.returncode
 
 
-def run_dossier_compile(transcripts_dir: Path, dossier_dir: Path) -> tuple[int, list[str]]:
+def run_dossier_compile(transcripts_dir: Path, dossier_dir: Path) -> int:
     logger.info("Running Van Helsing's Dossier (compile.py)")
     result = subprocess.run(
         [
@@ -616,21 +598,18 @@ def run_dossier_compile(transcripts_dir: Path, dossier_dir: Path) -> tuple[int, 
             result.stdout.strip(),
             result.stderr.strip(),
         )
-        return 0, []
+        return 0
 
     summary_line = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
     try:
         payload = json.loads(summary_line)
         written = int(payload.get("written", 0))
-        raw_days = payload.get("days", [])
-        days = [str(day) for day in raw_days] if isinstance(raw_days, list) else []
     except (json.JSONDecodeError, TypeError, ValueError):
         logger.warning("Could not parse dossier compile summary: %r", summary_line)
         written = 0
-        days = []
 
     logger.info("Dossier compile complete — %d daily file(s) updated", written)
-    return written, days
+    return written
 
 
 def run_rainfields_compile(dossier_dir: Path, rainfields_dir: Path) -> None:
@@ -704,52 +683,16 @@ def maybe_run_dossier_compile(
     new_transcripts: bool,
     last_compile_time: float,
     dossier_interval_seconds: float,
-) -> tuple[float, list[str]]:
+) -> float:
     now = time.time()
     compile_due = new_transcripts or (
         now - last_compile_time >= dossier_interval_seconds
     )
     if not compile_due:
-        return last_compile_time, []
+        return last_compile_time
 
-    _written, days = run_dossier_compile(transcripts_dir, dossier_dir)
-    return now, days
-
-
-def maybe_deliver_todays_dossier(
-    token: str,
-    voice_dir: Path,
-    transcripts_dir: Path,
-    dossier_dir: Path,
-    written_days: list[str],
-    *,
-    day: date | None = None,
-) -> None:
-    target = day or date.today()
-    day_iso = target.isoformat()
-    if day_iso not in written_days:
-        if written_days:
-            logger.info(
-                "Dossier wrote %d day(s) (%s); today's note (%s) unchanged — skip delivery",
-                len(written_days),
-                ", ".join(written_days),
-                day_iso,
-            )
-        return
-
-    path = todays_dossier_file(dossier_dir, day=target)
-    if path is None:
-        logger.info(
-            "Dossier listed today (%s) as written, but file is missing",
-            day_iso,
-        )
-        return
-
-    deliver_dossier_file(
-        token,
-        archive_user_ids(voice_dir, transcripts_dir),
-        path,
-    )
+    run_dossier_compile(transcripts_dir, dossier_dir)
+    return now
 
 
 def maybe_deliver_weekly(
@@ -803,32 +746,24 @@ def run_pass(
         logger.warning("transcribe.py exited with code %s", exit_code)
 
     pending_after = missing_transcripts(voice_dir, transcripts_dir)
-    transcribed_count = len(
-        [name for name in pending_before if name not in pending_after]
+    done = newly_transcribed(pending_before, pending_after)
+    transcribed_count = len(done)
+    deliver_new_transcripts(
+        token,
+        transcripts_dir,
+        done,
+        fallback_user_ids=notify_ids,
     )
-    message = format_notify_message(
-        transcribed_before=pending_before,
-        transcribed_after=pending_after,
-    )
-    notify_users(token, notify_ids, message)
 
     compile_time = last_dossier_compile_time
     delivery_time = last_weekly_delivery_time
-    written_days: list[str] = []
     if run_dossier:
-        compile_time, written_days = maybe_run_dossier_compile(
+        compile_time = maybe_run_dossier_compile(
             transcripts_dir,
             dossier_dir,
             new_transcripts=transcribed_count > 0,
             last_compile_time=last_dossier_compile_time,
             dossier_interval_seconds=dossier_interval_seconds,
-        )
-        maybe_deliver_todays_dossier(
-            token,
-            voice_dir,
-            transcripts_dir,
-            dossier_dir,
-            written_days,
         )
 
     if run_rainfields:
@@ -895,8 +830,8 @@ def _log_runner_mode(
     ) % (pending_poll_seconds, interval_minutes)
     if run_dossier and run_rainfields:
         logger.info(
-            "%s, dossier compile on new transcripts or every %d minute(s), "
-            "deliver today's dossier when written, "
+            "%s, send each new transcript .txt to Telegram, "
+            "dossier compile on new transcripts or every %d minute(s), "
             "Rainfields weekly refresh after each pass, "
             "weekly note delivery every %d minute(s)",
             transcribe_line,
@@ -905,8 +840,8 @@ def _log_runner_mode(
         )
     elif run_dossier:
         logger.info(
-            "%s, dossier compile on new transcripts or every %d minute(s), "
-            "deliver today's dossier when written, "
+            "%s, send each new transcript .txt to Telegram, "
+            "dossier compile on new transcripts or every %d minute(s), "
             "weekly note delivery every %d minute(s), Rainfields disabled",
             transcribe_line,
             dossier_interval_minutes,
@@ -914,14 +849,16 @@ def _log_runner_mode(
         )
     elif run_rainfields:
         logger.info(
-            "%s, dossier disabled, Rainfields weekly refresh after each pass, "
+            "%s, send each new transcript .txt to Telegram, "
+            "dossier disabled, Rainfields weekly refresh after each pass, "
             "weekly note delivery every %d minute(s)",
             transcribe_line,
             dossier_interval_minutes,
         )
     else:
         logger.info(
-            "%s, dossier and Rainfields refresh disabled, "
+            "%s, send each new transcript .txt to Telegram, "
+            "dossier and Rainfields refresh disabled, "
             "weekly note delivery every %d minute(s)",
             transcribe_line,
             dossier_interval_minutes,

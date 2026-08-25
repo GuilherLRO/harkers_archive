@@ -129,7 +129,7 @@ def compile_dossier(
     dossier_dir: Path,
     *,
     force: bool = False,
-) -> tuple[int, list[str]]:
+) -> int:
     manifest_path = dossier_dir / MANIFEST_NAME
     manifest = Manifest.load(manifest_path)
 
@@ -138,12 +138,11 @@ def compile_dossier(
 
     if not dirty_days:
         logger.info("No changes detected. Dossier is up to date.")
-        return 0, []
+        return 0
 
-    days = sorted(dirty_days)
     written = write_daily_files(dossier_dir, all_entries, dirty_days)
     manifest.save(manifest_path)
-    return written, days
+    return written
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -187,13 +186,13 @@ def main(argv: list[str] | None = None) -> int:
     logger.info("Transcripts: %s", transcripts_dir)
     logger.info("Dossier output: %s", dossier_dir)
 
-    written, days = compile_dossier(
+    written = compile_dossier(
         transcripts_dir,
         dossier_dir,
         force=args.force,
     )
     if args.json_summary:
-        print(json.dumps({"written": written, "days": days}))
+        print(json.dumps({"written": written}))
     else:
         logger.info("Done. %d daily file(s) updated.", written)
     return 0
