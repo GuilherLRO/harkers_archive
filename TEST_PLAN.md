@@ -79,8 +79,9 @@ Checks:
 - Run `uv run python helsings_round.py` from the repo root.
 - Confirm the bot starts, startup notification is sent when `STARTUP_NOTIFY_ENABLED=true`, and `SIGINT` stops the bot subprocess.
 - Add a voice note and confirm transcription starts within the pending poll interval (not only on the daily backstop).
-- After transcription, confirm the order: dossier compile, Rainfields compile, weekly note delivery on the dossier schedule.
-- Confirm the Telegram document delivery sends the latest `rainfields_mind/weekly/YYYY-WNN.md`, not the latest daily dossier.
+- After transcription, confirm the order: dossier compile, today's dossier delivery when that day was written, Rainfields compile, weekly note delivery on the dossier schedule.
+- Confirm the Telegram dossier document is `dossier/YYYY-MM-DD.md` for today (local date), and only when that day was updated.
+- Confirm the Telegram weekly document delivery sends the latest `rainfields_mind/weekly/YYYY-WNN.md`, not the latest daily dossier.
 - Temporarily make `compile_week.py` fail and confirm the coordinator logs a warning and continues.
 
 ## End-to-End Acceptance
@@ -91,7 +92,7 @@ Use this when changing shared paths, scheduling, or delivery behavior:
 2. Send one voice note and one typed Telegram note.
 3. Wait for the pending poll (default ~60s) or backstop pass.
 4. Verify files in order: `voice_archive/`, `transcripts/`, `dossier/`, `rainfields_mind/weekly/`.
-5. Verify Telegram messages: transcription summary first, latest weekly note document on the daily delivery schedule.
+5. Verify Telegram messages: transcription summary first; today's dossier document when that day was written; latest weekly note document on the daily delivery schedule.
 6. Restart with `./helsings_roundctl.sh restart` and confirm only one bot process remains.
 
 ## Gaps To Automate Later

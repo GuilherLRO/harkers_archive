@@ -137,7 +137,7 @@ Expected:
 When the root coordinator is running, Van Helsing's Dossier is invoked automatically:
 
 - **Compile** after a transcription pass that produced new voice transcripts, or at least every 24 hours (`DOSSIER_INTERVAL_MINUTES`, default `1440`).
-- **Deliver** the most recent daily Markdown file to archive users on the same 24-hour schedule as a Telegram document (checked on each transcription pass, so delivery may occur slightly after 24 hours).
+- **Deliver** today's daily Markdown (`dossier/YYYY-MM-DD.md`) to archive users as a Telegram document when that day's file is among the ones just written.
 
 Disable with `DOSSIER_ENABLED=false` in the root `.env`. Dossier failures are logged and do not stop the capture bot. See the [monorepo README](../README.md) section on `helsings_round.py`.
 

@@ -42,6 +42,7 @@ import re
 import signal
 import subprocess
 import time
+from datetime import date
 from pathlib import Path
 
 from archive_logging import configure_logging
@@ -340,6 +341,27 @@ def format_weekly_delivery_failure_message(error: BaseException) -> str:
     )
 
 
+def format_dossier_delivery_caption(path: Path) -> str:
+    return f"Van Helsing's Dossier — today's note ({path.stem})."
+
+
+def format_dossier_delivery_failure_message(error: BaseException) -> str:
+    return (
+        "Van Helsing's Dossier — could not deliver today's note "
+        f"({type(error).__name__}). Check helsings_round.log if needed."
+    )
+
+
+def todays_dossier_file(
+    dossier_dir: Path,
+    *,
+    day: date | None = None,
+) -> Path | None:
+    target = day or date.today()
+    path = dossier_dir / f"{target.isoformat()}.md"
+    return path if path.is_file() else None
+
+
 def format_startup_message(
     *,
     pending_poll_seconds: int,
@@ -359,7 +381,8 @@ def format_startup_message(
     if run_dossier:
         lines.append(
             "Van Helsing's Dossier — compile on new voice transcripts or every "
-            f"{dossier_interval_minutes} minute(s)."
+            f"{dossier_interval_minutes} minute(s); deliver today's note when "
+            "a daily file is written."
         )
     else:
         lines.append("Van Helsing's Dossier is disabled.")
@@ -388,11 +411,13 @@ async def _send_messages(token: str, user_ids: set[int], text: str) -> None:
                 logger.exception("Failed to notify user %s", user_id)
 
 
-async def _send_weekly_documents(
+async def _send_documents(
     token: str,
     user_ids: set[int],
     path: Path,
     caption: str,
+    *,
+    kind: str,
 ) -> None:
     bot = Bot(token=token)
     async with bot:
@@ -405,9 +430,39 @@ async def _send_weekly_documents(
                         filename=path.name,
                         caption=caption,
                     )
-                logger.info("Delivered weekly note %s to user %s", path.name, user_id)
+                logger.info("Delivered %s %s to user %s", kind, path.name, user_id)
             except Exception:
-                logger.exception("Failed to deliver weekly note to user %s", user_id)
+                logger.exception("Failed to deliver %s to user %s", kind, user_id)
+
+
+async def _send_weekly_documents(
+    token: str,
+    user_ids: set[int],
+    path: Path,
+    caption: str,
+) -> None:
+    await _send_documents(
+        token,
+        user_ids,
+        path,
+        caption,
+        kind="weekly note",
+    )
+
+
+async def _send_dossier_documents(
+    token: str,
+    user_ids: set[int],
+    path: Path,
+    caption: str,
+) -> None:
+    await _send_documents(
+        token,
+        user_ids,
+        path,
+        caption,
+        kind="dossier note",
+    )
 
 
 def notify_users(token: str, user_ids: set[int], message: str) -> None:
@@ -484,6 +539,28 @@ def deliver_weekly_file(token: str, user_ids: set[int], path: Path) -> None:
             logger.exception("Weekly delivery failure notification also failed")
 
 
+def deliver_dossier_file(token: str, user_ids: set[int], path: Path) -> None:
+    if not user_ids:
+        logger.info("No archive users to receive dossier delivery")
+        return
+
+    caption = format_dossier_delivery_caption(path)
+    logger.info(
+        "Delivering dossier note %s to %d user(s)",
+        path.name,
+        len(user_ids),
+    )
+    try:
+        asyncio.run(_send_dossier_documents(token, user_ids, path, caption))
+    except Exception as exc:
+        logger.exception("Dossier delivery failed: %s", exc)
+        try:
+            failure_text = format_dossier_delivery_failure_message(exc)
+            asyncio.run(_send_messages(token, user_ids, failure_text))
+        except Exception:
+            logger.exception("Dossier delivery failure notification also failed")
+
+
 def start_bot() -> subprocess.Popen[bytes]:
     logger.info("Starting Seward's Phonograph (bot.py)")
     return subprocess.Popen(
@@ -513,7 +590,7 @@ def run_transcribe() -> int:
     return result.returncode
 
 
-def run_dossier_compile(transcripts_dir: Path, dossier_dir: Path) -> int:
+def run_dossier_compile(transcripts_dir: Path, dossier_dir: Path) -> tuple[int, list[str]]:
     logger.info("Running Van Helsing's Dossier (compile.py)")
     result = subprocess.run(
         [
@@ -539,18 +616,21 @@ def run_dossier_compile(transcripts_dir: Path, dossier_dir: Path) -> int:
             result.stdout.strip(),
             result.stderr.strip(),
         )
-        return 0
+        return 0, []
 
     summary_line = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
     try:
         payload = json.loads(summary_line)
         written = int(payload.get("written", 0))
+        raw_days = payload.get("days", [])
+        days = [str(day) for day in raw_days] if isinstance(raw_days, list) else []
     except (json.JSONDecodeError, TypeError, ValueError):
         logger.warning("Could not parse dossier compile summary: %r", summary_line)
         written = 0
+        days = []
 
     logger.info("Dossier compile complete — %d daily file(s) updated", written)
-    return written
+    return written, days
 
 
 def run_rainfields_compile(dossier_dir: Path, rainfields_dir: Path) -> None:
@@ -624,16 +704,52 @@ def maybe_run_dossier_compile(
     new_transcripts: bool,
     last_compile_time: float,
     dossier_interval_seconds: float,
-) -> float:
+) -> tuple[float, list[str]]:
     now = time.time()
     compile_due = new_transcripts or (
         now - last_compile_time >= dossier_interval_seconds
     )
     if not compile_due:
-        return last_compile_time
+        return last_compile_time, []
 
-    run_dossier_compile(transcripts_dir, dossier_dir)
-    return now
+    _written, days = run_dossier_compile(transcripts_dir, dossier_dir)
+    return now, days
+
+
+def maybe_deliver_todays_dossier(
+    token: str,
+    voice_dir: Path,
+    transcripts_dir: Path,
+    dossier_dir: Path,
+    written_days: list[str],
+    *,
+    day: date | None = None,
+) -> None:
+    target = day or date.today()
+    day_iso = target.isoformat()
+    if day_iso not in written_days:
+        if written_days:
+            logger.info(
+                "Dossier wrote %d day(s) (%s); today's note (%s) unchanged — skip delivery",
+                len(written_days),
+                ", ".join(written_days),
+                day_iso,
+            )
+        return
+
+    path = todays_dossier_file(dossier_dir, day=target)
+    if path is None:
+        logger.info(
+            "Dossier listed today (%s) as written, but file is missing",
+            day_iso,
+        )
+        return
+
+    deliver_dossier_file(
+        token,
+        archive_user_ids(voice_dir, transcripts_dir),
+        path,
+    )
 
 
 def maybe_deliver_weekly(
@@ -698,13 +814,21 @@ def run_pass(
 
     compile_time = last_dossier_compile_time
     delivery_time = last_weekly_delivery_time
+    written_days: list[str] = []
     if run_dossier:
-        compile_time = maybe_run_dossier_compile(
+        compile_time, written_days = maybe_run_dossier_compile(
             transcripts_dir,
             dossier_dir,
             new_transcripts=transcribed_count > 0,
             last_compile_time=last_dossier_compile_time,
             dossier_interval_seconds=dossier_interval_seconds,
+        )
+        maybe_deliver_todays_dossier(
+            token,
+            voice_dir,
+            transcripts_dir,
+            dossier_dir,
+            written_days,
         )
 
     if run_rainfields:
@@ -772,6 +896,7 @@ def _log_runner_mode(
     if run_dossier and run_rainfields:
         logger.info(
             "%s, dossier compile on new transcripts or every %d minute(s), "
+            "deliver today's dossier when written, "
             "Rainfields weekly refresh after each pass, "
             "weekly note delivery every %d minute(s)",
             transcribe_line,
@@ -781,6 +906,7 @@ def _log_runner_mode(
     elif run_dossier:
         logger.info(
             "%s, dossier compile on new transcripts or every %d minute(s), "
+            "deliver today's dossier when written, "
             "weekly note delivery every %d minute(s), Rainfields disabled",
             transcribe_line,
             dossier_interval_minutes,

@@ -300,7 +300,7 @@ uv run python helsings_round.py
 
 When `helsings_round.py` is running, new voice files in `voice_archive/` are transcribed within about `TRANSCRIBE_PENDING_POLL_SECONDS` (default **60** seconds). A full coordinator pass still runs on the `TRANSCRIBE_INTERVAL_MINUTES` backstop (default **1440**) even when nothing is pending — for dossier compile and weekly note delivery. Users who recently sent voice notes receive a Telegram summary after each transcription pass. If that summary cannot be sent (network or Telegram API error), the same users get a short failure notice instead; the runner keeps going and does not stop the capture bot.
 
-Van Helsing's Dossier runs on the same coordinator: it compiles `transcripts/` into daily Markdown when new voice transcripts appear, or at least every 24 hours (see `DOSSIER_INTERVAL_MINUTES`). Set `DOSSIER_ENABLED=false` to disable dossier compile while keeping capture and transcription.
+Van Helsing's Dossier runs on the same coordinator: it compiles `transcripts/` into daily Markdown when new voice transcripts appear, or at least every 24 hours (see `DOSSIER_INTERVAL_MINUTES`). When a compile writes today's daily file, archive users receive that `.md` as a Telegram document. Set `DOSSIER_ENABLED=false` to disable dossier compile while keeping capture and transcription.
 
 Rainfields Mind runs after each transcription pass (and after dossier compile when enabled): it checks for dirty ISO weeks and calls the LLM only when dossiers changed or a weekly note is missing. On the same 24-hour schedule (`DOSSIER_INTERVAL_MINUTES`), archive users receive the most recent weekly note (`.md`) from `rainfields_mind/weekly/` as a Telegram document. Set `RAINFIELDS_ENABLED=false` to skip weekly synthesis while keeping capture and transcription.
 
@@ -413,6 +413,7 @@ This archive is deliberately incomplete — a working manuscript, not a closed b
 | Index / search across transcripts | Find passages across the compiled record |
 | Automatic transcription on capture | Phonograph → typewriter without a manual step | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
 | Daily dossier compile | Transcripts → Obsidian Markdown | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
+| Today's dossier delivery | Dossier → Telegram document when that day is written | **Partial** — [`helsings_round.py`](helsings_round.py) after dossier compile |
 | Weekly note delivery | Rainfields Mind → Telegram document | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
 | Rainfields Mind | Dossier → tagged weekly synthesis in `rainfields_mind/weekly/` | **Partial** — [`agent/compile_week.py`](rainfields_mind/agent/compile_week.py); automatic via `helsings_round.py` after each transcription pass |
 | Summaries or cross-references | Collate related entries across days and sources |
