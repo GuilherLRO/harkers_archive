@@ -24,6 +24,7 @@ In modern terms: capture via Telegram, archive locally, transcribe via the OpenA
 | Mina's assembled manuscript | The `transcripts/` folder — the compiled readable record |
 | Van Helsing's dossier | Daily Markdown notes in `dossier/` via [van_helsings_dossier](van_helsings_dossier/) |
 | Rainfields Mind | Weekly curated synthesis in `rainfields_mind/` — tagged synthesis from the dossier |
+| Quincey's Dispatch | Postgres mirror of dossier + weekly notes for other VPS apps via [quinceys_dispatch](quinceys_dispatch/) |
 
 ## The circle
 
@@ -33,8 +34,10 @@ In modern terms: capture via Telegram, archive locally, transcribe via the OpenA
 | [**Dr. Seward's Phonograph**](sewards_phonograph/) | Seward at the phonograph — voice preserved to cylinder | Telegram bot — saves voice (`.ogg`) and typed text (`.txt`) | [README →](sewards_phonograph/README.md) |
 | [**Mina's Typewriter**](mina_typewriter/) | Mina at the keys — whispers fixed to the page | OpenAI Audio API batch transcription — CLI + Streamlit | [README →](mina_typewriter/README.md) |
 | [**Van Helsing's Dossier**](van_helsings_dossier/) | Van Helsing at the dossier — testimony ordered into one case file | Compile `transcripts/` into daily Obsidian Markdown | [README →](van_helsings_dossier/README.md) |
+| [**Rainfields Mind**](rainfields_mind/) | Curated weekly synthesis | Tagged weekly notes from the dossier | [README →](rainfields_mind/README.md) |
+| [**Quincey's Dispatch**](quinceys_dispatch/) | Quincey as courier — the record carried outward | Sync dossier + weekly notes into Postgres for other VPS apps | [README →](quinceys_dispatch/README.md) |
 
-**Root coordinator:** [`helsings_round.py`](helsings_round.py) + [`helsings_roundctl.sh`](helsings_roundctl.sh) — optional; runs the phonograph, schedules the typewriter, compiles/delivers the dossier, and refreshes Rainfields Mind weekly notes without changing sub-projects.
+**Root coordinator:** [`helsings_round.py`](helsings_round.py) + [`helsings_roundctl.sh`](helsings_roundctl.sh) — optional; runs the phonograph, schedules the typewriter, compiles/delivers the dossier, refreshes Rainfields Mind weekly notes, and optionally dispatches to Postgres without changing sub-projects.
 
 ## How it works
 
@@ -51,12 +54,14 @@ flowchart LR
     TR[(transcripts/*.txt)]
     DO[(dossier/*.md)]
     RM[(rainfields_mind/weekly/*.md)]
+    PG[(Postgres harkers)]
   end
 
   subgraph transcribe["Transcribe and compile (manual or scheduled)"]
     MT[Mina's Typewriter]
     VD[Van Helsing's Dossier]
     AR[helsings_round.py]
+    QD[Quincey's Dispatch]
   end
 
   SP -->|voice message| VA
@@ -66,6 +71,9 @@ flowchart LR
   TR --> VD
   VD -->|daily Markdown| DO
   DO -->|Rainfields agent| RM
+  DO --> QD
+  RM --> QD
+  QD --> PG
   AR -.->|optional: bot + interval| SP
   AR -.->|optional: interval| MT
   AR -.->|optional: interval| VD
@@ -78,6 +86,7 @@ flowchart LR
 | Transcribe voice | Mina's Typewriter | Manual — run CLI or Streamlit when ready |
 | Compile dossier | Van Helsing's Dossier | Manual — run CLI when ready; or automatic via `helsings_round.py` |
 | Rainfields Mind | `rainfields_mind/` | Agent or manual — see [Rainfields Mind](#rainfields-mind) |
+| Postgres mirror | Quincey's Dispatch | Manual CLI, or `helsings_round.py` when `QUINCEYS_DISPATCH_ENABLED=true` |
 | Run everything | `helsings_round.py` | Bot always on + transcribe when pending + daily backstop pass (see `TRANSCRIBE_PENDING_POLL_SECONDS`, `TRANSCRIBE_INTERVAL_MINUTES`, `DOSSIER_INTERVAL_MINUTES`) |
 
 Typed notes land in `transcripts/` immediately. Voice files wait in `voice_archive/` until you run Mina's Typewriter (or `helsings_round.py` on its schedule).
@@ -95,6 +104,7 @@ harkers_archive/
 │   ├── WEEKLY_JOURNAL_INSTRUCTIONS.md
 │   ├── index.md
 │   └── weekly/          # one file per ISO week, e.g. 2026-W22.md
+├── quinceys_dispatch/   # Postgres mirror of dossier + weekly notes for other apps
 ├── sewards_phonograph/  # Telegram capture bot
 ├── mina_typewriter/     # OpenAI Audio API transcription
 ├── van_helsings_dossier/ # transcript compiler → daily Markdown
@@ -304,6 +314,8 @@ Van Helsing's Dossier runs on the same coordinator: it compiles `transcripts/` i
 
 Rainfields Mind runs after each transcription pass (and after dossier compile when enabled): it checks for dirty ISO weeks and calls the LLM only when dossiers changed or a weekly note is missing. On the same 24-hour schedule (`DOSSIER_INTERVAL_MINUTES`), archive users receive the most recent weekly note (`.md`) from `rainfields_mind/weekly/` as a Telegram document. Set `RAINFIELDS_ENABLED=false` to skip weekly synthesis while keeping capture and transcription.
 
+Quincey's Dispatch runs after Rainfields when `QUINCEYS_DISPATCH_ENABLED=true`: it upserts dossier days, weekly notes, and manifest entries into Postgres database `harkers`. Failures are logged and do not stop the bot. Requires `HARKERS_DATABASE_URL`.
+
 On every start or restart, archive users receive a short Telegram message confirming the runner is active (disable with `STARTUP_NOTIFY_ENABLED=false`).
 
 This script only calls the existing sub-projects via subprocess — it does not replace manual steps 4–6. Only one instance should run at a time.
@@ -388,6 +400,8 @@ All settings live in the root `.env`. Sub-projects resolve it automatically.
 | `DOSSIER_INTERVAL_MINUTES` | `helsings_round.py` | No | Minutes between dossier compile and weekly note delivery cycles (default `1440`) |
 | `DOSSIER_ENABLED` | `helsings_round.py` | No | Enable dossier compile (default `true`) |
 | `RAINFIELDS_ENABLED` | `helsings_round.py` | No | Refresh Rainfields Mind weekly notes after each transcription pass (default `true`) |
+| `QUINCEYS_DISPATCH_ENABLED` | `helsings_round.py` | No | Sync dossier + weekly notes to Postgres after each pass (default `false`) |
+| `HARKERS_DATABASE_URL` | Quincey's Dispatch | Yes (when enabled) | Postgres URL for database `harkers` |
 | `STARTUP_NOTIFY_ENABLED` | `helsings_round.py` | No | Telegram message to archive users when the runner starts (default `true`) |
 | `HELSINGS_HTTP_LOG` | `archive_logging.py` | No | Absolute path for Telegram HTTP log; defaults to `helsings_round_http.log` in the repo root |
 
@@ -399,6 +413,7 @@ Each module has its own README with artwork, troubleshooting, and reference docs
 - **[Mina's Typewriter](mina_typewriter/README.md)** — OpenAI models, transcription options, Streamlit UI, API limits
 - **[Van Helsing's Dossier](van_helsings_dossier/README.md)** — compile transcripts into Obsidian daily Markdown notes
 - **[Rainfields Mind](rainfields_mind/README.md)** — weekly synthesis from dossiers; tagging and LLM instructions
+- **[Quincey's Dispatch](quinceys_dispatch/README.md)** — Postgres mirror of dossier + weekly notes for other VPS apps
 
 ## The work continues
 
@@ -410,7 +425,7 @@ This archive is deliberately incomplete — a working manuscript, not a closed b
 
 | Direction | Idea |
 |-----------|------|
-| Index / search across transcripts | Find passages across the compiled record |
+| Index / search across transcripts | Find passages across the compiled record | **Partial** — [`quinceys_dispatch`](quinceys_dispatch/) mirrors dossier entries + documents to Postgres for SQL consumers |
 | Automatic transcription on capture | Phonograph → typewriter without a manual step | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |
 | Transcript delivery | New `transcripts/*.txt` → Telegram document | **Partial** — [`helsings_round.py`](helsings_round.py) after each transcription |
 | Daily dossier compile | Transcripts → Obsidian Markdown | **Partial** — [`helsings_round.py`](helsings_round.py) on a schedule |

@@ -19,6 +19,7 @@ COPY sewards_phonograph/pyproject.toml sewards_phonograph/README.md sewards_phon
 COPY mina_typewriter/pyproject.toml mina_typewriter/README.md mina_typewriter/
 COPY van_helsings_dossier/pyproject.toml van_helsings_dossier/README.md van_helsings_dossier/
 COPY rainfields_mind/agent/pyproject.toml rainfields_mind/agent/README.md rainfields_mind/agent/
+COPY quinceys_dispatch/pyproject.toml quinceys_dispatch/README.md quinceys_dispatch/
 
 RUN uv sync --all-packages --frozen --no-dev --no-install-project
 

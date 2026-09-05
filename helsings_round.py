@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Run Seward's Phonograph and schedule Mina's Typewriter, Van Helsing's Dossier, and Rainfields Mind.
+"""Run Seward's Phonograph and schedule Mina's Typewriter, Van Helsing's Dossier,
+Rainfields Mind, and Quincey's Dispatch.
 
 Root coordinator. Does not modify sub-projects: starts bot.py, transcribe.py,
-compile.py, and compile_week.py via subprocess.
+compile.py, compile_week.py, and sync.py via subprocess.
 
 Run from the repo root (where .env lives):
 
@@ -54,6 +55,7 @@ SEWARD_DIR = REPO_ROOT / "sewards_phonograph"
 MINA_DIR = REPO_ROOT / "mina_typewriter"
 DOSSIER_DIR = REPO_ROOT / "van_helsings_dossier"
 RAINFIELDS_AGENT_DIR = REPO_ROOT / "rainfields_mind" / "agent"
+QUINCEYS_DISPATCH_DIR = REPO_ROOT / "quinceys_dispatch"
 VOICE_EXTENSIONS = (".ogg", ".m4a", ".mp4", ".wav", ".WAV")
 
 DEFAULT_INTERVAL_MINUTES = 1440
@@ -216,6 +218,10 @@ def rainfields_enabled() -> bool:
     return _env_flag("RAINFIELDS_ENABLED", default=True)
 
 
+def quinceys_dispatch_enabled() -> bool:
+    return _env_flag("QUINCEYS_DISPATCH_ENABLED", default=False)
+
+
 def startup_notify_enabled() -> bool:
     return _env_flag("STARTUP_NOTIFY_ENABLED", default=True)
 
@@ -345,6 +351,7 @@ def format_startup_message(
     dossier_interval_minutes: int,
     run_dossier: bool,
     run_rainfields: bool,
+    run_quinceys_dispatch: bool,
 ) -> str:
     lines = [
         "Harker's Archive — archive runner started.",
@@ -375,6 +382,13 @@ def format_startup_message(
             "Rainfields Mind refresh is disabled; latest weekly note delivery still "
             f"runs every {dossier_interval_minutes} minute(s)."
         )
+    if run_quinceys_dispatch:
+        lines.append(
+            "Quincey's Dispatch — sync dossier and weekly notes to Postgres after "
+            "each Rainfields pass."
+        )
+    else:
+        lines.append("Quincey's Dispatch is disabled.")
     return "\n".join(lines)
 
 
@@ -453,6 +467,7 @@ def notify_startup(
     dossier_interval_minutes: int,
     run_dossier: bool,
     run_rainfields: bool,
+    run_quinceys_dispatch: bool,
 ) -> None:
     if not startup_notify_enabled():
         logger.info("Startup notification disabled")
@@ -469,6 +484,7 @@ def notify_startup(
         dossier_interval_minutes=dossier_interval_minutes,
         run_dossier=run_dossier,
         run_rainfields=run_rainfields,
+        run_quinceys_dispatch=run_quinceys_dispatch,
     )
     logger.info("Sending startup notification to %d user(s)", len(user_ids))
     try:
@@ -666,6 +682,94 @@ def run_rainfields_compile(dossier_dir: Path, rainfields_dir: Path) -> None:
         )
 
 
+def run_quinceys_dispatch(dossier_dir: Path, rainfields_dir: Path) -> None:
+    logger.info("Running Quincey's Dispatch (sync.py)")
+    try:
+        result = subprocess.run(
+            [
+                "uv",
+                "run",
+                "python",
+                "sync.py",
+                "--dossier-dir",
+                str(dossier_dir),
+                "--rainfields-dir",
+                str(rainfields_dir),
+                "--json-summary",
+            ],
+            cwd=QUINCEYS_DISPATCH_DIR,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=600,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning(
+            "Quincey's Dispatch timed out after 600s — archive runner continues"
+        )
+        return
+    except FileNotFoundError as exc:
+        logger.warning(
+            "Quincey's Dispatch could not start (%s) — archive runner continues",
+            exc,
+        )
+        return
+    except Exception:
+        logger.exception(
+            "Quincey's Dispatch raised unexpectedly — archive runner continues"
+        )
+        return
+
+    if result.returncode != 0:
+        logger.warning(
+            "Quincey's Dispatch exited with code %s\nstdout: %s\nstderr: %s",
+            result.returncode,
+            result.stdout.strip(),
+            result.stderr.strip(),
+        )
+        return
+
+    summary_line = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    try:
+        payload = json.loads(summary_line)
+    except json.JSONDecodeError:
+        logger.warning("Could not parse Quincey's Dispatch summary: %r", summary_line)
+        return
+
+    if payload.get("ok") is False:
+        logger.warning(
+            "Quincey's Dispatch reported failure: %s",
+            payload.get("error") or payload,
+        )
+        return
+
+    entries = payload.get("entries", {})
+    dossier_docs = payload.get("dossier_documents", {})
+    weekly_docs = payload.get("weekly_documents", {})
+    error_total = (
+        int(entries.get("errors", 0) or 0)
+        + int(dossier_docs.get("errors", 0) or 0)
+        + int(weekly_docs.get("errors", 0) or 0)
+    )
+    if error_total:
+        logger.warning(
+            "Quincey's Dispatch finished with %d row error(s) — "
+            "entries %s, dossier docs %s, weekly docs %s",
+            error_total,
+            entries,
+            dossier_docs,
+            weekly_docs,
+        )
+        return
+
+    logger.info(
+        "Quincey's Dispatch complete — entries %s, dossier docs %s, weekly docs %s",
+        entries,
+        dossier_docs,
+        weekly_docs,
+    )
+
+
 def _handle_shutdown(signum: int, _frame: object) -> None:
     global _shutting_down
     if _shutting_down:
@@ -733,6 +837,7 @@ def run_pass(
     last_weekly_delivery_time: float,
     run_dossier: bool,
     run_rainfields: bool,
+    run_quinceys: bool,
 ) -> tuple[PassResult, float, float]:
     pending_before = missing_transcripts(voice_dir, transcripts_dir)
     notify_ids = recent_voice_user_ids(voice_dir, since_epoch)
@@ -768,6 +873,9 @@ def run_pass(
 
     if run_rainfields:
         run_rainfields_compile(dossier_dir, rainfields_dir)
+
+    if run_quinceys:
+        run_quinceys_dispatch(dossier_dir, rainfields_dir)
 
     delivery_time = maybe_deliver_weekly(
         token,
@@ -823,46 +931,31 @@ def _log_runner_mode(
     dossier_interval_minutes: int,
     run_dossier: bool,
     run_rainfields: bool,
+    run_quinceys: bool,
 ) -> None:
     transcribe_line = (
         "Archive runner active — transcribe when pending every %d second(s), "
         "full pass backstop every %d minute(s)"
     ) % (pending_poll_seconds, interval_minutes)
-    if run_dossier and run_rainfields:
-        logger.info(
-            "%s, send each new transcript .txt to Telegram, "
-            "dossier compile on new transcripts or every %d minute(s), "
-            "Rainfields weekly refresh after each pass, "
-            "weekly note delivery every %d minute(s)",
-            transcribe_line,
-            dossier_interval_minutes,
-            dossier_interval_minutes,
-        )
-    elif run_dossier:
-        logger.info(
-            "%s, send each new transcript .txt to Telegram, "
-            "dossier compile on new transcripts or every %d minute(s), "
-            "weekly note delivery every %d minute(s), Rainfields disabled",
-            transcribe_line,
-            dossier_interval_minutes,
-            dossier_interval_minutes,
-        )
-    elif run_rainfields:
-        logger.info(
-            "%s, send each new transcript .txt to Telegram, "
-            "dossier disabled, Rainfields weekly refresh after each pass, "
-            "weekly note delivery every %d minute(s)",
-            transcribe_line,
-            dossier_interval_minutes,
+    extras: list[str] = [
+        "send each new transcript .txt to Telegram",
+    ]
+    if run_dossier:
+        extras.append(
+            f"dossier compile on new transcripts or every {dossier_interval_minutes} minute(s)"
         )
     else:
-        logger.info(
-            "%s, send each new transcript .txt to Telegram, "
-            "dossier and Rainfields refresh disabled, "
-            "weekly note delivery every %d minute(s)",
-            transcribe_line,
-            dossier_interval_minutes,
-        )
+        extras.append("dossier disabled")
+    if run_rainfields:
+        extras.append("Rainfields weekly refresh after each pass")
+    else:
+        extras.append("Rainfields disabled")
+    if run_quinceys:
+        extras.append("Quincey's Dispatch to Postgres after each pass")
+    else:
+        extras.append("Quincey's Dispatch disabled")
+    extras.append(f"weekly note delivery every {dossier_interval_minutes} minute(s)")
+    logger.info("%s, %s", transcribe_line, ", ".join(extras))
 
 
 def main() -> None:
@@ -887,6 +980,7 @@ def main() -> None:
     dossier_interval_seconds = dossier_interval_minutes * 60
     run_dossier = dossier_enabled()
     run_rainfields = rainfields_enabled()
+    run_quinceys = quinceys_dispatch_enabled()
 
     signal.signal(signal.SIGINT, _handle_shutdown)
     signal.signal(signal.SIGTERM, _handle_shutdown)
@@ -898,6 +992,7 @@ def main() -> None:
         dossier_interval_minutes=dossier_interval_minutes,
         run_dossier=run_dossier,
         run_rainfields=run_rainfields,
+        run_quinceys=run_quinceys,
     )
 
     notify_startup(
@@ -909,6 +1004,7 @@ def main() -> None:
         dossier_interval_minutes=dossier_interval_minutes,
         run_dossier=run_dossier,
         run_rainfields=run_rainfields,
+        run_quinceys_dispatch=run_quinceys,
     )
 
     last_pass_time = time.time() - interval_seconds
@@ -935,6 +1031,7 @@ def main() -> None:
                     last_weekly_delivery_time=last_weekly_delivery_time,
                     run_dossier=run_dossier,
                     run_rainfields=run_rainfields,
+                    run_quinceys=run_quinceys,
                 )
                 last_pass_time = pass_result.pass_time
 

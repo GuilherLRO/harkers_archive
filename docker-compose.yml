@@ -26,9 +26,20 @@ services:
       HARKERS_DOSSIER_DIR: /app/dossier
       HARKERS_RAINFIELDS_DIR: /app/rainfields_mind
       HELSINGS_HTTP_LOG: /app/logs/helsings_round_http.log
+      # Reach pgvector-db on the external postgres_default network (overrides host .env localhost URL).
+      HARKERS_DATABASE_URL: postgresql://guilherme:postgui123@pgvector-db:5432/harkers
+      QUINCEYS_DISPATCH_ENABLED: ${QUINCEYS_DISPATCH_ENABLED:-true}
     volumes:
       - ./voice_archive:/app/voice_archive
       - ./transcripts:/app/transcripts
       - ./dossier:/app/dossier
       - ./rainfields_mind:/app/rainfields_mind
       - ./logs:/app/logs
+    networks:
+      - default
+      - postgres
+
+networks:
+  postgres:
+    external: true
+    name: postgres_default

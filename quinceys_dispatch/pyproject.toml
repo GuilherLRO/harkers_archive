@@ -1,0 +1,12 @@
+[project]
+name = "quinceys-dispatch"
+version = "0.1.0"
+description = "Dispatch dossier and weekly notes into Postgres for other VPS apps"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.13"
+dependencies = [
+    "python-dotenv>=1.0.0",
+    "psycopg[binary]>=3.2.0",
+    "pyyaml>=6.0",
+]

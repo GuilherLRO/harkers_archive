@@ -11,4 +11,10 @@ dependencies = [
 ]
 
 [tool.uv.workspace]
-members = ["sewards_phonograph", "mina_typewriter", "van_helsings_dossier", "rainfields_mind/agent"]
+members = [
+    "sewards_phonograph",
+    "mina_typewriter",
+    "van_helsings_dossier",
+    "rainfields_mind/agent",
+    "quinceys_dispatch",
+]
