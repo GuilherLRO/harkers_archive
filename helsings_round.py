@@ -344,6 +344,49 @@ def format_weekly_delivery_failure_message(error: BaseException) -> str:
     )
 
 
+def _format_count_line(label: str, counts: dict) -> str:
+    inserted = int(counts.get("inserted", 0) or 0)
+    updated = int(counts.get("updated", 0) or 0)
+    unchanged = int(counts.get("unchanged", 0) or 0)
+    deleted = int(counts.get("deleted", 0) or 0)
+    errors = int(counts.get("errors", 0) or 0)
+    parts = [
+        f"{inserted} new",
+        f"{updated} updated",
+        f"{unchanged} unchanged",
+    ]
+    if deleted:
+        parts.append(f"{deleted} deleted")
+    if errors:
+        parts.append(f"{errors} errors")
+    return f"{label}: " + ", ".join(parts)
+
+
+def format_quinceys_success_message(payload: dict) -> str:
+    lines = [
+        "Quincey's Dispatch — Postgres sync complete.",
+        _format_count_line("dossier", payload.get("dossier_documents") or {}),
+        _format_count_line("weekly", payload.get("weekly_documents") or {}),
+        _format_count_line("entries", payload.get("entries") or {}),
+    ]
+    return "\n".join(lines)
+
+
+def format_quinceys_failure_message(reason: str) -> str:
+    detail = reason.strip() or "unknown error"
+    if len(detail) > 280:
+        detail = detail[:277] + "..."
+    return (
+        "Quincey's Dispatch — Postgres sync failed.\n"
+        f"{detail}\n"
+        "Archive runner continues; check helsings_round.log if needed."
+    )
+
+
+def quinceys_dispatch_notify_enabled() -> bool:
+    return _env_flag("QUINCEYS_DISPATCH_NOTIFY_ENABLED", default=True)
+
+
 def format_startup_message(
     *,
     pending_poll_seconds: int,
@@ -682,7 +725,30 @@ def run_rainfields_compile(dossier_dir: Path, rainfields_dir: Path) -> None:
         )
 
 
-def run_quinceys_dispatch(dossier_dir: Path, rainfields_dir: Path) -> None:
+def notify_quinceys_dispatch(
+    token: str,
+    voice_dir: Path,
+    transcripts_dir: Path,
+    text: str,
+) -> None:
+    if not quinceys_dispatch_notify_enabled():
+        logger.info("Quincey's Dispatch Telegram notify disabled")
+        return
+
+    user_ids = archive_user_ids(voice_dir, transcripts_dir)
+    if not user_ids:
+        logger.info("No archive users to notify for Quincey's Dispatch")
+        return
+
+    logger.info("Sending Quincey's Dispatch status to %d user(s)", len(user_ids))
+    try:
+        asyncio.run(_send_messages(token, user_ids, text))
+    except Exception:
+        logger.exception("Quincey's Dispatch Telegram notify failed")
+
+
+def run_quinceys_dispatch(dossier_dir: Path, rainfields_dir: Path) -> str:
+    """Run sync.py and return a Telegram status message (success or failure)."""
     logger.info("Running Quincey's Dispatch (sync.py)")
     try:
         result = subprocess.run(
@@ -707,18 +773,28 @@ def run_quinceys_dispatch(dossier_dir: Path, rainfields_dir: Path) -> None:
         logger.warning(
             "Quincey's Dispatch timed out after 600s — archive runner continues"
         )
-        return
+        return format_quinceys_failure_message("timed out after 600s")
     except FileNotFoundError as exc:
         logger.warning(
             "Quincey's Dispatch could not start (%s) — archive runner continues",
             exc,
         )
-        return
-    except Exception:
+        return format_quinceys_failure_message(f"could not start ({exc})")
+    except Exception as exc:
         logger.exception(
             "Quincey's Dispatch raised unexpectedly — archive runner continues"
         )
-        return
+        return format_quinceys_failure_message(f"{type(exc).__name__}: {exc}")
+
+    summary_line = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
+    payload: dict = {}
+    if summary_line:
+        try:
+            parsed = json.loads(summary_line)
+            if isinstance(parsed, dict):
+                payload = parsed
+        except json.JSONDecodeError:
+            payload = {}
 
     if result.returncode != 0:
         logger.warning(
@@ -727,25 +803,30 @@ def run_quinceys_dispatch(dossier_dir: Path, rainfields_dir: Path) -> None:
             result.stdout.strip(),
             result.stderr.strip(),
         )
-        return
+        reason = str(payload.get("error") or "").strip()
+        if not reason:
+            stderr = result.stderr.strip().splitlines()
+            reason = stderr[-1] if stderr else f"exit code {result.returncode}"
+        return format_quinceys_failure_message(reason)
 
-    summary_line = result.stdout.strip().splitlines()[-1] if result.stdout.strip() else ""
-    try:
-        payload = json.loads(summary_line)
-    except json.JSONDecodeError:
+    if not payload:
         logger.warning("Could not parse Quincey's Dispatch summary: %r", summary_line)
-        return
+        return format_quinceys_failure_message(
+            f"could not parse sync summary: {summary_line!r}"
+        )
 
     if payload.get("ok") is False:
         logger.warning(
             "Quincey's Dispatch reported failure: %s",
             payload.get("error") or payload,
         )
-        return
+        return format_quinceys_failure_message(
+            str(payload.get("error") or "sync reported ok=false")
+        )
 
-    entries = payload.get("entries", {})
-    dossier_docs = payload.get("dossier_documents", {})
-    weekly_docs = payload.get("weekly_documents", {})
+    entries = payload.get("entries", {}) or {}
+    dossier_docs = payload.get("dossier_documents", {}) or {}
+    weekly_docs = payload.get("weekly_documents", {}) or {}
     error_total = (
         int(entries.get("errors", 0) or 0)
         + int(dossier_docs.get("errors", 0) or 0)
@@ -760,7 +841,9 @@ def run_quinceys_dispatch(dossier_dir: Path, rainfields_dir: Path) -> None:
             dossier_docs,
             weekly_docs,
         )
-        return
+        return format_quinceys_failure_message(
+            f"{error_total} row error(s) while syncing"
+        )
 
     logger.info(
         "Quincey's Dispatch complete — entries %s, dossier docs %s, weekly docs %s",
@@ -768,6 +851,8 @@ def run_quinceys_dispatch(dossier_dir: Path, rainfields_dir: Path) -> None:
         dossier_docs,
         weekly_docs,
     )
+    return format_quinceys_success_message(payload)
+
 
 
 def _handle_shutdown(signum: int, _frame: object) -> None:
@@ -875,7 +960,8 @@ def run_pass(
         run_rainfields_compile(dossier_dir, rainfields_dir)
 
     if run_quinceys:
-        run_quinceys_dispatch(dossier_dir, rainfields_dir)
+        status_text = run_quinceys_dispatch(dossier_dir, rainfields_dir)
+        notify_quinceys_dispatch(token, voice_dir, transcripts_dir, status_text)
 
     delivery_time = maybe_deliver_weekly(
         token,

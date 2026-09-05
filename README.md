@@ -401,6 +401,7 @@ All settings live in the root `.env`. Sub-projects resolve it automatically.
 | `DOSSIER_ENABLED` | `helsings_round.py` | No | Enable dossier compile (default `true`) |
 | `RAINFIELDS_ENABLED` | `helsings_round.py` | No | Refresh Rainfields Mind weekly notes after each transcription pass (default `true`) |
 | `QUINCEYS_DISPATCH_ENABLED` | `helsings_round.py` | No | Sync dossier + weekly notes to Postgres after each pass (default `false`) |
+| `QUINCEYS_DISPATCH_NOTIFY_ENABLED` | `helsings_round.py` | No | Telegram status after each Quincey's Dispatch sync (default `true`) |
 | `HARKERS_DATABASE_URL` | Quincey's Dispatch | Yes (when enabled) | Postgres URL for database `harkers` |
 | `STARTUP_NOTIFY_ENABLED` | `helsings_round.py` | No | Telegram message to archive users when the runner starts (default `true`) |
 | `HELSINGS_HTTP_LOG` | `archive_logging.py` | No | Absolute path for Telegram HTTP log; defaults to `helsings_round_http.log` in the repo root |

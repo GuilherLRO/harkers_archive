@@ -81,4 +81,4 @@ WHERE kind = 'weekly' AND doc_key = '2026-W36';
 
 ## Coordinator
 
-When `helsings_round.py` is running and `QUINCEYS_DISPATCH_ENABLED=true`, Quincey's Dispatch runs after each Rainfields pass. Failures are logged and do not stop the Telegram bot: connection errors, timeouts, and per-row upsert failures are soft-failed (one bad file does not roll back the rest).
+When `helsings_round.py` is running and `QUINCEYS_DISPATCH_ENABLED=true`, Quincey's Dispatch runs after each Rainfields pass. Failures are logged and do not stop the Telegram bot: connection errors, timeouts, and per-row upsert failures are soft-failed (one bad file does not roll back the rest). By default a short Telegram status is sent after each sync (success or failure); set `QUINCEYS_DISPATCH_NOTIFY_ENABLED=false` to silence it.
